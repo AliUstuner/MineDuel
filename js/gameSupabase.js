@@ -805,6 +805,18 @@ class GameClient {
                     this.hasShield = false;
                     this.shieldIndicator?.classList.add('hidden');
                     this.showPointsChange('Shield!', 'success');
+                    // Clear shield timeout
+                    if (this.shieldTimeout) {
+                        clearTimeout(this.shieldTimeout);
+                        this.shieldTimeout = null;
+                    }
+                    // Clear power notification
+                    const notification = document.getElementById('power-notification');
+                    if (notification) {
+                        notification.classList.remove('show');
+                    }
+                    // Notify opponent that shield is broken
+                    this.broadcastPower('shieldBroken', {});
                 } else {
                     points -= 30;
                 }
@@ -867,6 +879,27 @@ class GameClient {
     handleOpponentPower(data) {
         if (data.power === 'freeze') {
             this.handleFrozen(data.duration || 5000);
+        } else if (data.power === 'shield') {
+            // Opponent has shield, we can't attack them for the duration
+            this.opponentHasShield = true;
+            this.opponentShieldUntil = Date.now() + (data.duration || 10000);
+            
+            // Show notification that opponent has shield
+            this.showNotification('🛡️ Rakip kalkan aktif! Saldırı yapamazsın!', 'info');
+            
+            // Auto-clear opponent shield status
+            if (this.opponentShieldTimeout) clearTimeout(this.opponentShieldTimeout);
+            this.opponentShieldTimeout = setTimeout(() => {
+                this.opponentHasShield = false;
+            }, data.duration || 10000);
+        } else if (data.power === 'shieldBroken') {
+            // Opponent's shield was broken by mine
+            this.opponentHasShield = false;
+            if (this.opponentShieldTimeout) {
+                clearTimeout(this.opponentShieldTimeout);
+                this.opponentShieldTimeout = null;
+            }
+            this.showNotification('💥 Rakibin kalkanı kırıldı!', 'success');
         }
     }
 
@@ -943,11 +976,35 @@ class GameClient {
                 
             case 'shield':
                 this.hasShield = true;
+                this.shieldUntil = Date.now() + 10000; // 10 seconds
                 this.shieldIndicator?.classList.remove('hidden');
-                this.showPowerNotificationSimple('shield', 'Kalkan Aktif! (1 mayın)');
+                
+                // Broadcast shield to opponent (they can't attack for 10 seconds)
+                this.broadcastPower('shield', { duration: 10000 });
+                
+                // Show notification with countdown
+                this.showPowerNotification('shield', 10000);
+                
+                // Auto-deactivate shield after 10 seconds
+                if (this.shieldTimeout) clearTimeout(this.shieldTimeout);
+                this.shieldTimeout = setTimeout(() => {
+                    if (this.hasShield) {
+                        this.hasShield = false;
+                        this.shieldIndicator?.classList.add('hidden');
+                    }
+                }, 10000);
                 break;
                 
             case 'freeze':
+                // Check if opponent has shield
+                if (this.opponentHasShield && Date.now() < this.opponentShieldUntil) {
+                    this.showNotification('❌ Rakip kalkanlı! Saldırı yapamassın!', 'error');
+                    // Refund the cost
+                    this.score += cost;
+                    this.updateScore();
+                    this.updatePowerButtons();
+                    return;
+                }
                 this.broadcastPower('freeze', { duration: 5000 });
                 // Show freeze effect on opponent's board in my view
                 this.showOpponentFreezeEffect(5000);
