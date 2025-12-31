@@ -300,10 +300,27 @@ class BoardRenderer {
                         ctx.fillText(cell.neighborCount.toString(), px + this.cellSize / 2, py + this.cellSize / 2);
                     }
                 } else if (cell.isFlagged) {
-                    ctx.font = `${this.cellSize * 0.5}px Arial`;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText('🚩', px + this.cellSize / 2, py + this.cellSize / 2);
+                    // Draw flag using canvas shapes instead of emoji
+                    const cx = px + this.cellSize / 2;
+                    const cy = py + this.cellSize / 2;
+                    const flagSize = this.cellSize * 0.35;
+                    
+                    // Flag pole
+                    ctx.strokeStyle = '#8B4513';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(cx - flagSize * 0.3, cy - flagSize);
+                    ctx.lineTo(cx - flagSize * 0.3, cy + flagSize);
+                    ctx.stroke();
+                    
+                    // Red flag triangle
+                    ctx.fillStyle = '#e74c3c';
+                    ctx.beginPath();
+                    ctx.moveTo(cx - flagSize * 0.3, cy - flagSize);
+                    ctx.lineTo(cx + flagSize * 0.7, cy - flagSize * 0.4);
+                    ctx.lineTo(cx - flagSize * 0.3, cy + flagSize * 0.2);
+                    ctx.closePath();
+                    ctx.fill();
                 }
 
                 ctx.strokeStyle = cell.isRevealed ? '#0d1520' : '#5a8ac7';
