@@ -845,13 +845,16 @@ body {
 #notifications {
     position: fixed;
     top: 55px;
-    right: 20px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 1001;
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: center;
     gap: 8px;
     pointer-events: none;
+    width: 90%;
+    max-width: 300px;
 }
 
 .notification {
@@ -861,7 +864,7 @@ body {
     border: 1px solid var(--border);
     font-weight: 600;
     font-size: 14px;
-    white-space: nowrap;
+    text-align: center;
     animation: slideDown 0.4s ease, notifyOut 0.3s ease 2.7s forwards;
     pointer-events: auto;
 }
@@ -1582,4 +1585,204 @@ body {
         transform: translateX(0);
         opacity: 1;
     }
+}
+
+/* ==================== AUTH MODAL ==================== */
+.auth-modal-content {
+    max-width: 350px;
+    width: 90%;
+}
+
+.modal-close {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 5px;
+}
+
+.modal-close:hover {
+    color: var(--text);
+}
+
+.modal-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.modal-subtitle {
+    color: var(--text-muted);
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+.btn-google {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px;
+    background: white;
+    color: #333;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-google:hover {
+    background: #f5f5f5;
+    transform: translateY(-2px);
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    margin: 20px 0;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
+.auth-divider span {
+    padding: 0 10px;
+}
+
+.auth-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.auth-tab.active {
+    background: var(--primary);
+    color: var(--dark);
+    border-color: var(--primary);
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.auth-form input {
+    padding: 12px;
+    background: var(--dark);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+}
+
+.auth-form input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* ==================== LEADERBOARD MODAL ==================== */
+.leaderboard-modal-content {
+    max-width: 400px;
+    width: 90%;
+    max-height: 80vh;
+}
+
+.leaderboard-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.lb-tab {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.lb-tab.active {
+    background: var(--primary);
+    color: var(--dark);
+    border-color: var(--primary);
+}
+
+.leaderboard-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.leaderboard-loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+.lb-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+}
+
+.lb-item:last-child {
+    border-bottom: none;
+}
+
+.lb-rank {
+    font-size: 18px;
+    font-weight: 700;
+    min-width: 30px;
+    color: var(--text-muted);
+}
+
+.lb-rank.gold { color: #FFD700; }
+.lb-rank.silver { color: #C0C0C0; }
+.lb-rank.bronze { color: #CD7F32; }
+
+.lb-name {
+    flex: 1;
+    font-weight: 600;
+}
+
+.lb-score {
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.lb-empty {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
 }

@@ -58,9 +58,24 @@ export async function signIn(email, password) {
     return data;
 }
 
+export async function signInWithGoogle() {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+            redirectTo: window.location.origin
+        }
+    });
+    if (error) throw error;
+    return data;
+}
+
 export async function signOut() {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+}
+
+export function onAuthStateChange(callback) {
+    return supabase.auth.onAuthStateChange(callback);
 }
 
 export async function getCurrentUser() {
@@ -134,6 +149,17 @@ export async function findMatch(difficulty, currentUserId) {
 
     if (error) throw error;
     return data?.[0] || null;
+}
+
+export async function getMyQueueStatus(userId) {
+    const { data, error } = await supabase
+        .from('matchmaking_queue')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+    if (error) return null;
+    return data;
 }
 
 export async function updateMatchStatus(odaId, odaUsers, odaStatus, matchId = null) {

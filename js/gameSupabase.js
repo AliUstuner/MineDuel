@@ -518,13 +518,13 @@ class GameClient {
                     mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount
                 });
             } else {
-                // No opponent found, join queue
+                // No opponent found, join queue and start polling
+                this.odaUserId = odaUserId;
+                this.pendingPlayerName = playerName;
                 await SupabaseClient.joinMatchmaking(odaUserId, playerName, difficulty);
                 
-                // Subscribe to matchmaking updates
-                this.matchmakingChannel = SupabaseClient.subscribeToMatchmaking(difficulty, (payload) => {
-                    this.handleMatchmakingUpdate(payload, odaUserId, playerName);
-                });
+                // Start polling for matches (more reliable than realtime for matchmaking)
+                this.startMatchPolling(odaUserId, difficulty);
             }
         } catch (error) {
             console.error('Matchmaking error:', error);
@@ -532,66 +532,72 @@ class GameClient {
         }
     }
 
-    async handleMatchmakingUpdate(payload, odaUserId, playerName) {
-        console.log('Matchmaking update:', payload);
-        
-        // New player joined the queue - we should try to match with them
-        if (payload.eventType === 'INSERT' && payload.new.user_id !== odaUserId && payload.new.status === 'waiting') {
-            const opponent = payload.new;
-            
-            // We are the host, create the game
-            this.isHost = true;
-            this.opponentId = opponent.user_id;
-            this.opponentName = opponent.username;
-            
+    startMatchPolling(odaUserId, difficulty) {
+        // Poll every 2 seconds for match status or new opponents
+        this.matchPollingInterval = setInterval(async () => {
             try {
-                // Create game
-                const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, this.selectedDifficulty);
-                this.gameId = game.id;
+                // Check if we got matched
+                const myStatus = await SupabaseClient.getMyQueueStatus(odaUserId);
                 
-                // Update both players' queue status
-                await SupabaseClient.updateMatchStatus(null, odaUserId, 'matched', game.id);
-                await SupabaseClient.updateMatchStatus(null, opponent.user_id, 'matched', game.id);
-                
-                // Unsubscribe from matchmaking
-                if (this.matchmakingChannel) {
-                    SupabaseClient.unsubscribe(this.matchmakingChannel);
-                    this.matchmakingChannel = null;
+                if (myStatus && myStatus.status === 'matched' && myStatus.match_id) {
+                    // We got matched!
+                    this.stopMatchPolling();
+                    this.gameId = myStatus.match_id;
+                    this.isHost = false;
+                    
+                    this.startGame({
+                        gameId: myStatus.match_id,
+                        opponent: 'Rakip',
+                        difficulty: difficulty,
+                        gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
+                        mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount
+                    });
+                    return;
                 }
                 
-                // Start the game
-                this.startGame({
-                    gameId: game.id,
-                    opponent: opponent.username,
-                    difficulty: this.selectedDifficulty,
-                    gridSize: CONFIG.DIFFICULTIES[this.selectedDifficulty].gridSize,
-                    mineCount: CONFIG.DIFFICULTIES[this.selectedDifficulty].mineCount
-                });
+                // Check for waiting opponents
+                const opponent = await SupabaseClient.findMatch(difficulty, odaUserId);
+                
+                if (opponent) {
+                    // Found opponent! We become the host
+                    this.stopMatchPolling();
+                    this.isHost = true;
+                    this.opponentId = opponent.user_id;
+                    this.opponentName = opponent.username;
+                    
+                    // Create game
+                    const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, difficulty);
+                    this.gameId = game.id;
+                    
+                    // Update both players' queue status
+                    await SupabaseClient.updateMatchStatus(null, odaUserId, 'matched', game.id);
+                    await SupabaseClient.updateMatchStatus(null, opponent.user_id, 'matched', game.id);
+                    
+                    // Start the game
+                    this.startGame({
+                        gameId: game.id,
+                        opponent: opponent.username,
+                        difficulty: difficulty,
+                        gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
+                        mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount
+                    });
+                }
             } catch (e) {
-                console.error('Failed to create game:', e);
+                console.error('Poll error:', e);
             }
+        }, 2000);
+    }
+
+    stopMatchPolling() {
+        if (this.matchPollingInterval) {
+            clearInterval(this.matchPollingInterval);
+            this.matchPollingInterval = null;
         }
-        
-        // Our status was updated to matched - someone else created a game for us
-        if (payload.eventType === 'UPDATE' && payload.new.user_id === odaUserId && payload.new.status === 'matched') {
-            this.gameId = payload.new.match_id;
-            this.isHost = false;
-            
-            // Unsubscribe from matchmaking
-            if (this.matchmakingChannel) {
-                SupabaseClient.unsubscribe(this.matchmakingChannel);
-                this.matchmakingChannel = null;
-            }
-            
-            // Start game
-            this.startGame({
-                gameId: payload.new.match_id,
-                opponent: 'Opponent',
-                difficulty: this.selectedDifficulty,
-                gridSize: CONFIG.DIFFICULTIES[this.selectedDifficulty].gridSize,
-                mineCount: CONFIG.DIFFICULTIES[this.selectedDifficulty].mineCount
-            });
-        }
+    }
+
+    async handleMatchmakingUpdate(payload, odaUserId, playerName) {
+        // Deprecated - using polling instead
+        console.log('Matchmaking update (deprecated):', payload);
     }
 
     startOfflineGame(difficulty) {
@@ -600,12 +606,14 @@ class GameClient {
     }
 
     async cancelSearch() {
+        this.stopMatchPolling();
+        
         if (this.matchmakingChannel) {
             SupabaseClient.unsubscribe(this.matchmakingChannel);
             this.matchmakingChannel = null;
         }
         
-        const userId = this.user?.id || 'guest';
+        const userId = this.odaUserId || this.user?.id || 'guest';
         try {
             await SupabaseClient.leaveMatchmaking(userId);
         } catch (e) {}
@@ -1014,8 +1022,164 @@ class GameClient {
     }
 }
 
+// ==================== AUTH MANAGER ====================
+class AuthManager {
+    constructor(gameClient) {
+        this.game = gameClient;
+        this.modal = document.getElementById('auth-modal');
+        this.loginForm = document.getElementById('login-form');
+        this.registerForm = document.getElementById('register-form');
+        this.setupEventListeners();
+        
+        // Listen for auth state changes
+        SupabaseClient.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' && session?.user) {
+                this.handleSignIn(session.user);
+            }
+        });
+    }
+
+    setupEventListeners() {
+        // Tab switching
+        document.querySelectorAll('.auth-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                if (tab.dataset.tab === 'login') {
+                    this.loginForm?.classList.remove('hidden');
+                    this.registerForm?.classList.add('hidden');
+                } else {
+                    this.loginForm?.classList.add('hidden');
+                    this.registerForm?.classList.remove('hidden');
+                }
+            });
+        });
+
+        // Login form
+        this.loginForm?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            
+            try {
+                await SupabaseClient.signIn(email, password);
+                this.hideModal();
+                this.game.showNotification('Giriş başarılı!', 'success');
+            } catch (error) {
+                this.game.showNotification(error.message, 'error');
+            }
+        });
+
+        // Register form
+        this.registerForm?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('register-username').value;
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            
+            try {
+                await SupabaseClient.signUp(email, password, username);
+                this.hideModal();
+                this.game.showNotification('Kayıt başarılı! E-postanı onayla.', 'success');
+            } catch (error) {
+                this.game.showNotification(error.message, 'error');
+            }
+        });
+    }
+
+    async signInWithGoogle() {
+        try {
+            await SupabaseClient.signInWithGoogle();
+        } catch (error) {
+            this.game.showNotification('Google girişi başarısız', 'error');
+        }
+    }
+
+    async handleSignIn(user) {
+        this.game.user = user;
+        try {
+            this.game.profile = await SupabaseClient.getProfile(user.id);
+        } catch (e) {
+            // Create profile if not exists
+            this.game.profile = { username: user.email?.split('@')[0] || 'Player' };
+        }
+        this.game.updateAuthUI();
+        this.hideModal();
+    }
+
+    showModal() {
+        this.modal?.classList.remove('hidden');
+    }
+
+    hideModal() {
+        this.modal?.classList.add('hidden');
+    }
+}
+
+// ==================== LEADERBOARD MANAGER ====================
+class LeaderboardManager {
+    constructor(gameClient) {
+        this.game = gameClient;
+        this.modal = document.getElementById('leaderboard-modal');
+        this.list = document.getElementById('leaderboard-list');
+        this.currentType = 'rating';
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        document.querySelectorAll('.lb-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.lb-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                this.currentType = tab.dataset.type;
+                this.loadLeaderboard();
+            });
+        });
+    }
+
+    async loadLeaderboard() {
+        if (!this.list) return;
+        this.list.innerHTML = '<div class="leaderboard-loading">Yükleniyor...</div>';
+        
+        try {
+            const data = await SupabaseClient.getLeaderboard(this.currentType);
+            
+            if (data.length === 0) {
+                this.list.innerHTML = '<div class="lb-empty">Henüz oyuncu yok</div>';
+                return;
+            }
+            
+            this.list.innerHTML = data.map((player, index) => {
+                const rankClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : '';
+                const score = this.currentType === 'rating' ? player.rating : player.wins;
+                return `
+                    <div class="lb-item">
+                        <span class="lb-rank ${rankClass}">#${index + 1}</span>
+                        <span class="lb-name">${player.username || 'Unknown'}</span>
+                        <span class="lb-score">${score}</span>
+                    </div>
+                `;
+            }).join('');
+        } catch (error) {
+            this.list.innerHTML = '<div class="lb-empty">Yüklenemedi</div>';
+        }
+    }
+
+    showModal() {
+        this.modal?.classList.remove('hidden');
+        this.loadLeaderboard();
+    }
+
+    hideModal() {
+        this.modal?.classList.add('hidden');
+    }
+}
+
 // ==================== INITIALIZE ====================
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🎮 MineDuel - Supabase Realtime Edition');
     window.game = new GameClient();
+    window.authManager = new AuthManager(window.game);
+    window.leaderboardManager = new LeaderboardManager(window.game);
 });
