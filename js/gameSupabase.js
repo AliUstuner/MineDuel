@@ -904,42 +904,124 @@ class GameClient {
     showMobileMenu() {
         if (!this.mobileActionMenu) return;
         this.mobileActionMenu.classList.remove('hidden');
+        
+        // Highlight selected cell
+        this.highlightSelectedCell();
+    }
+    
+    highlightSelectedCell() {
+        // Remove existing highlight
+        const existingHighlight = document.getElementById('mobile-cell-highlight');
+        if (existingHighlight) existingHighlight.remove();
+        
+        if (!this.selectedCell || !this.playerBoard) return;
+        
+        const canvas = document.getElementById('player-canvas');
+        if (!canvas) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const cellSize = rect.width / this.playerBoard.gridSize;
+        
+        const highlight = document.createElement('div');
+        highlight.id = 'mobile-cell-highlight';
+        highlight.className = 'mobile-selected-cell';
+        highlight.style.left = `${rect.left + (this.selectedCell.x * cellSize)}px`;
+        highlight.style.top = `${rect.top + (this.selectedCell.y * cellSize)}px`;
+        highlight.style.width = `${cellSize}px`;
+        highlight.style.height = `${cellSize}px`;
+        document.body.appendChild(highlight);
+    }
+    
+    removeHighlight() {
+        const highlight = document.getElementById('mobile-cell-highlight');
+        if (highlight) highlight.remove();
     }
     
     hideMobileMenu() {
         if (!this.mobileActionMenu) return;
         this.mobileActionMenu.classList.add('hidden');
+        this.removeHighlight();
         this.selectedCell = null;
     }
     
     mobileDigAction() {
         if (!this.selectedCell) return;
         
-        // Create a fake event with the cell coordinates
-        const canvas = document.getElementById('player-canvas');
-        const rect = canvas.getBoundingClientRect();
-        const cellSize = this.playerBoard.cellSize;
+        const cell = this.selectedCell;
+        this.removeHighlight();
+        this.mobileActionMenu?.classList.add('hidden');
         
-        const fakeEvent = {
-            clientX: rect.left + (this.selectedCell.x * cellSize) + (cellSize / 2),
-            clientY: rect.top + (this.selectedCell.y * cellSize) + (cellSize / 2)
-        };
+        // Generate mines on first click if needed
+        if (!this.minesGenerated) {
+            this.playerBoard.generateMines(this.pendingMineCount, cell.x, cell.y);
+            this.minesGenerated = true;
+        }
         
-        this.hideMobileMenu();
-        this.handleCellClick(fakeEvent);
+        // Reveal the cell directly
+        const revealed = this.playerBoard.revealCell(cell.x, cell.y);
+        this.playerBoard.render();
+        
+        // Calculate score
+        let points = 0;
+        let hitMine = false;
+        
+        revealed.forEach(c => {
+            if (c.isMine) {
+                hitMine = true;
+                if (this.hasShield) {
+                    this.hasShield = false;
+                    this.shieldIndicator?.classList.add('hidden');
+                    this.showPointsChange('Shield!', 'success');
+                    if (this.shieldTimeout) {
+                        clearTimeout(this.shieldTimeout);
+                        this.shieldTimeout = null;
+                    }
+                    const notification = document.getElementById('power-notification');
+                    if (notification) notification.classList.remove('show');
+                    this.broadcastPower('shieldBroken', {});
+                } else {
+                    points -= 30;
+                }
+            } else {
+                points += 5;
+            }
+        });
+        
+        this.score = Math.max(0, this.score + points);
+        this.updateScore();
+        this.updatePowerButtons();
+        
+        if (hitMine && !this.hasShield) {
+            this.audio.playMine();
+            this.showPointsChange('-30', 'error');
+        } else if (points > 0) {
+            this.audio.playReveal(revealed.length);
+        }
+        
+        this.broadcastMove({ x: cell.x, y: cell.y, revealed, score: this.score });
+        
+        if (this.playerBoard.getUnrevealedCount() === 0) {
+            this.endGame(true);
+        }
+        
+        this.selectedCell = null;
     }
     
     mobileFlagAction() {
         if (!this.selectedCell) return;
         
-        const cellData = this.playerBoard.grid[this.selectedCell.y][this.selectedCell.x];
+        const cell = this.selectedCell;
+        const cellData = this.playerBoard.grid[cell.y][cell.x];
+        
         if (!cellData.isRevealed) {
             cellData.isFlagged = !cellData.isFlagged;
             this.playerBoard.render();
             this.audio.playClick();
         }
         
-        this.hideMobileMenu();
+        this.removeHighlight();
+        this.mobileActionMenu?.classList.add('hidden');
+        this.selectedCell = null;
     }
 
     handleOpponentMove(data) {
