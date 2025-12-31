@@ -1054,29 +1054,30 @@ body {
 
 /* ==================== MOBILE ACTION MENU ==================== */
 .mobile-action-menu {
-    position: fixed;
-    bottom: 15px;
-    left: 50%;
-    transform: translateX(-50%);
+    position: static;
+    display: none;
+    gap: 6px;
+    padding: 0;
+    margin-left: auto;
+    background: transparent;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    z-index: 1;
+}
+
+.mobile-action-menu:not(.hidden) {
     display: flex;
-    gap: 8px;
-    padding: 8px 12px;
-    background: rgba(21, 21, 48, 0.95);
-    border-radius: 12px;
-    border: 2px solid var(--primary);
-    box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
-    z-index: 1000;
-    animation: slideUp 0.2s ease;
 }
 
 @keyframes slideUp {
     from {
         opacity: 0;
-        transform: translateX(-50%) translateY(20px);
+        transform: translateY(10px);
     }
     to {
         opacity: 1;
-        transform: translateX(-50%) translateY(0);
+        transform: translateY(0);
     }
 }
 
@@ -1365,11 +1366,6 @@ body {
     
     .game-title {
         font-size: 14px;
-    }
-    
-    /* Mobile action menu - position above opponent bar */
-    .mobile-action-menu {
-        bottom: 50px;
     }
 }
 

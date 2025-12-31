@@ -111,21 +111,28 @@ class BoardRenderer {
     setupCanvas() {
         const cellSize = this.isOpponent ? 16 : 26;
         const size = this.gridSize * cellSize;
-        this.canvas.width = size;
-        this.canvas.height = size;
+        
+        // High DPI/Retina display support for better quality
+        const dpr = window.devicePixelRatio || 1;
+        this.canvas.width = size * dpr;
+        this.canvas.height = size * dpr;
         this.canvas.style.width = size + 'px';
         this.canvas.style.height = size + 'px';
+        
+        // Scale context for high DPI
+        const ctx = this.canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        
         this.cellSize = cellSize;
+        this.dpr = dpr;
         this.render();
     }
 
     getCellFromClick(e) {
         const rect = this.canvas.getBoundingClientRect();
-        // Use the rendered size (getBoundingClientRect) not the canvas internal size
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        const x = Math.floor((e.clientX - rect.left) * scaleX / this.cellSize);
-        const y = Math.floor((e.clientY - rect.top) * scaleY / this.cellSize);
+        // Calculate based on CSS size and cell size (DPR-independent)
+        const x = Math.floor((e.clientX - rect.left) / rect.width * this.gridSize);
+        const y = Math.floor((e.clientY - rect.top) / rect.height * this.gridSize);
         if (x >= 0 && x < this.gridSize && y >= 0 && y < this.gridSize) return { x, y };
         return null;
     }
@@ -251,7 +258,8 @@ class BoardRenderer {
 
     render() {
         const ctx = this.ctx;
-        const size = this.canvas.width;
+        // Use logical size (CSS pixels), not canvas.width which is scaled by DPR
+        const size = this.gridSize * this.cellSize;
         ctx.fillStyle = '#0a0a1a';
         ctx.fillRect(0, 0, size, size);
 
