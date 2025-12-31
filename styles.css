@@ -1178,15 +1178,13 @@ body {
     .game-screen {
         height: 100%;
         overflow: hidden;
-    }
-    
-    .game-layout {
-        padding: 4px;
-        gap: 4px;
-        height: calc(100dvh - 40px);
-        overflow: hidden;
         display: flex;
         flex-direction: column;
+    }
+    
+    .game-screen .game-header {
+        order: 0;
+        flex-shrink: 0;
     }
     
     /* REORDER with flexbox order */
