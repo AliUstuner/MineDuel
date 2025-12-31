@@ -121,8 +121,11 @@ class BoardRenderer {
 
     getCellFromClick(e) {
         const rect = this.canvas.getBoundingClientRect();
-        const x = Math.floor((e.clientX - rect.left) / this.cellSize);
-        const y = Math.floor((e.clientY - rect.top) / this.cellSize);
+        // Use the rendered size (getBoundingClientRect) not the canvas internal size
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+        const x = Math.floor((e.clientX - rect.left) * scaleX / this.cellSize);
+        const y = Math.floor((e.clientY - rect.top) * scaleY / this.cellSize);
         if (x >= 0 && x < this.gridSize && y >= 0 && y < this.gridSize) return { x, y };
         return null;
     }
@@ -920,13 +923,14 @@ class GameClient {
         if (!canvas) return;
         
         const rect = canvas.getBoundingClientRect();
+        // Use rendered size for highlight positioning
         const cellSize = rect.width / this.playerBoard.gridSize;
         
         const highlight = document.createElement('div');
         highlight.id = 'mobile-cell-highlight';
         highlight.className = 'mobile-selected-cell';
-        highlight.style.left = `${rect.left + (this.selectedCell.x * cellSize)}px`;
-        highlight.style.top = `${rect.top + (this.selectedCell.y * cellSize)}px`;
+        highlight.style.left = `${rect.left + (this.selectedCell.x * cellSize) + window.scrollX}px`;
+        highlight.style.top = `${rect.top + (this.selectedCell.y * cellSize) + window.scrollY}px`;
         highlight.style.width = `${cellSize}px`;
         highlight.style.height = `${cellSize}px`;
         document.body.appendChild(highlight);

@@ -1164,12 +1164,14 @@ body {
 @media (max-width: 500px) {
     html, body {
         height: 100%;
+        height: 100dvh;
         overflow: hidden;
     }
     
     #app {
         max-width: 100%;
         height: 100%;
+        height: 100dvh;
         overflow: hidden;
     }
     
@@ -1180,53 +1182,60 @@ body {
     
     .game-layout {
         padding: 4px;
-        gap: 4px;
-        height: calc(100% - 50px);
+        gap: 2px;
+        height: calc(100dvh - 44px);
         overflow: hidden;
         display: flex;
         flex-direction: column;
     }
     
-    /* Opponent section - smaller */
+    /* Opponent section - minimal inline */
     .opponent-section {
-        padding: 4px 6px;
+        padding: 2px 6px;
         flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--card);
+        border-radius: 8px;
     }
     
     .opponent-info {
-        padding: 4px 8px;
-        margin-bottom: 4px;
+        padding: 0;
+        margin-bottom: 0;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 6px;
     }
     
     .opponent-avatar {
-        width: 28px;
-        height: 28px;
-        font-size: 14px;
-    }
-    
-    .opponent-name {
+        width: 24px;
+        height: 24px;
         font-size: 12px;
     }
     
-    .opponent-score .score-value {
-        font-size: 14px;
+    .opponent-name {
+        font-size: 11px;
     }
     
-    .opponent-board canvas {
-        max-height: 80px;
-        max-width: 80px;
+    .opponent-score .score-value {
+        font-size: 12px;
+    }
+    
+    .opponent-board {
+        display: none !important;
     }
     
     .board-container.opponent-board {
-        justify-content: center;
+        display: none !important;
     }
     
     .completion-bar {
-        height: 3px;
-        margin-top: 4px;
+        display: none;
     }
     
-    /* Powers section - compact */
+    /* Powers section - compact inline */
     .powers-section {
         padding: 4px 6px;
         flex-shrink: 0;
@@ -1234,32 +1243,32 @@ body {
     
     .points-row {
         flex-direction: row;
-        gap: 6px;
+        gap: 4px;
         margin-bottom: 4px;
     }
     
     .points-display {
-        padding: 4px 10px;
-        flex: 1;
+        padding: 4px 8px;
+        flex: 0 0 auto;
     }
     
     .points-icon {
-        font-size: 16px;
+        font-size: 14px;
     }
     
     .points-label {
-        font-size: 10px;
+        font-size: 9px;
     }
     
     .points-value {
-        font-size: 18px;
+        font-size: 16px;
     }
     
     .power-notification {
         flex: 1;
-        min-height: 30px;
+        min-height: 28px;
         font-size: 10px;
-        padding: 4px 8px;
+        padding: 4px 6px;
     }
     
     .power-buttons {
@@ -1267,7 +1276,7 @@ body {
     }
     
     .power-btn {
-        padding: 6px 2px;
+        padding: 4px 2px;
         min-width: 0;
         flex: 1;
     }
@@ -1277,16 +1286,16 @@ body {
     }
     
     .power-btn .power-name {
-        font-size: 9px;
+        font-size: 8px;
     }
     
     .power-btn .power-cost {
-        font-size: 8px;
+        font-size: 7px;
     }
     
     /* Player section - maximize */
     .player-section {
-        padding: 4px 6px;
+        padding: 4px;
         flex: 1;
         display: flex;
         flex-direction: column;
@@ -1296,22 +1305,22 @@ body {
     
     .player-info {
         padding: 4px 8px;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
         flex-shrink: 0;
     }
     
     .player-avatar {
-        width: 28px;
-        height: 28px;
-        font-size: 14px;
-    }
-    
-    .player-name-label {
+        width: 24px;
+        height: 24px;
         font-size: 12px;
     }
     
+    .player-name-label {
+        font-size: 11px;
+    }
+    
     .player-score .score-value {
-        font-size: 14px;
+        font-size: 12px;
     }
     
     .board-container.player-board {
@@ -1320,6 +1329,7 @@ body {
         align-items: center;
         justify-content: center;
         min-height: 0;
+        position: relative;
     }
     
     .player-board canvas {
@@ -1332,39 +1342,47 @@ body {
     
     /* Top nav compact */
     .top-nav {
-        padding: 6px 8px;
+        padding: 4px 8px;
         flex-shrink: 0;
+        height: 44px;
     }
     
     .nav-logo {
-        font-size: 12px !important;
+        font-size: 11px !important;
     }
     
     .nav-timer {
-        font-size: 12px !important;
-        padding: 4px 8px !important;
+        font-size: 11px !important;
+        padding: 3px 6px !important;
     }
     
     .nav-btn {
-        padding: 4px 8px;
-        font-size: 10px;
+        padding: 3px 6px;
+        font-size: 9px;
     }
     
-    /* Mobile action menu position */
+    /* Mobile action menu */
     .mobile-action-menu {
-        bottom: 10px;
-        padding: 8px 12px;
-        gap: 8px;
+        bottom: 8px;
+        padding: 6px 10px;
+        gap: 6px;
+    }
+    
+    .mobile-action-btn {
+        padding: 6px 12px;
+    }
+    
+    .mobile-action-btn span:first-child {
+        font-size: 16px;
+    }
+    
+    .mobile-action-btn span:last-child {
+        font-size: 10px;
     }
 }
 
 /* Small phones */
 @media (max-width: 380px) {
-    .opponent-board canvas {
-        max-height: 60px;
-        max-width: 60px;
-    }
-    
     .points-value {
         font-size: 16px;
     }
