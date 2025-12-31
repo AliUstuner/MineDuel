@@ -1089,7 +1089,8 @@ class GameClient {
             this.opponentShieldUntil = Date.now() + (data.duration || 10000);
             
             // Show notification that opponent has shield
-            this.showNotification('🛡️ Rakip kalkan aktif! Saldırı yapamazsın!', 'info');
+            this.showNotification('🛡️ Rakip kalkan aktif!', 'info');
+            this.showOpponentPowerEffect('shield');
             
             // Auto-clear opponent shield status
             if (this.opponentShieldTimeout) clearTimeout(this.opponentShieldTimeout);
@@ -1104,6 +1105,14 @@ class GameClient {
                 this.opponentShieldTimeout = null;
             }
             this.showNotification('💥 Rakibin kalkanı kırıldı!', 'success');
+        } else if (data.power === 'radar') {
+            // Opponent used radar
+            this.showNotification('📡 Rakip RADAR kullandı!', 'warning');
+            this.showOpponentPowerEffect('radar');
+        } else if (data.power === 'safeburst') {
+            // Opponent used burst
+            this.showNotification(`💥 Rakip BURST kullandı! +${data.points || 0} puan`, 'warning');
+            this.showOpponentPowerEffect('safeburst');
         }
     }
 
@@ -1169,6 +1178,8 @@ class GameClient {
                 } else {
                     this.showPowerNotificationSimple('radar', 'Gizli mayın bulunamadı!');
                 }
+                // Broadcast radar usage to opponent
+                this.broadcastPower('radar', { count: unflaggedMines.length });
                 break;
                 
             case 'safeburst':
@@ -1253,6 +1264,53 @@ class GameClient {
             }
         };
         updateTimer();
+    }
+
+    showOpponentPowerEffect(powerType) {
+        // Create a visual flash effect on opponent's board
+        const opponentSection = document.querySelector('.opponent-section');
+        if (!opponentSection) return;
+        
+        // Define colors for each power
+        const colors = {
+            'radar': 'rgba(0, 212, 255, 0.6)',
+            'safeburst': 'rgba(255, 165, 0, 0.6)',
+            'shield': 'rgba(100, 200, 100, 0.6)'
+        };
+        
+        const icons = {
+            'radar': '📡',
+            'safeburst': '💥',
+            'shield': '🛡️'
+        };
+        
+        // Create flash overlay
+        const flash = document.createElement('div');
+        flash.className = 'power-flash-effect';
+        flash.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: ${colors[powerType] || 'rgba(255,255,255,0.5)'};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            z-index: 100;
+            pointer-events: none;
+            animation: powerFlash 1s ease-out forwards;
+        `;
+        flash.innerHTML = icons[powerType] || '⚡';
+        
+        opponentSection.style.position = 'relative';
+        opponentSection.appendChild(flash);
+        
+        // Remove after animation
+        setTimeout(() => {
+            flash.remove();
+        }, 1000);
     }
 
     showOpponentFreezeEffect(duration) {
