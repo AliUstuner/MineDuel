@@ -1277,8 +1277,8 @@ body {
     #player-canvas {
         width: auto !important;
         height: auto !important;
-        max-width: calc(100vw - 80px);
-        max-height: calc(100dvh - 530px);
+        max-width: calc(100vw - 100px);
+        max-height: calc(100dvh - 610px);
         aspect-ratio: 1;
         object-fit: contain;
     }
