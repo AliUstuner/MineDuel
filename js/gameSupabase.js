@@ -12,7 +12,7 @@ const CONFIG = {
         medium: { gridSize: 10, mineCount: 20 },
         hard: { gridSize: 12, mineCount: 35 }
     },
-    MATCH_DURATION: 120000,
+    MATCH_DURATION: 150000,
     COLORS: {
         1: '#3498db', 2: '#27ae60', 3: '#e74c3c', 4: '#9b59b6',
         5: '#e67e22', 6: '#1abc9c', 7: '#34495e', 8: '#95a5a6'
@@ -786,9 +786,9 @@ class GameClient {
                 if (this.hasShield) {
                     this.hasShield = false;
                     this.shieldIndicator?.classList.add('hidden');
-                    this.showNotification('Shield absorbed damage!', 'success');
+                    this.showPointsChange('Shield!', 'success');
                 } else {
-                    points -= 25;
+                    points -= 30;
                 }
             } else {
                 // Empty cells give 5 points, numbered cells give their number
@@ -802,7 +802,7 @@ class GameClient {
         
         if (hitMine && !this.hasShield) {
             this.audio.playMine();
-            this.showNotification(`💣 Mine hit! -25 points`, 'error');
+            this.showPointsChange('-30', 'error');
         } else if (points > 0) {
             this.audio.playReveal(revealed.length);
             // Score updates in UI, no notification needed
@@ -1045,6 +1045,24 @@ class GameClient {
         notification.textContent = text;
         container.appendChild(notification);
         setTimeout(() => notification.remove(), 3000);
+    }
+
+    showPointsChange(text, type = 'info') {
+        // Show points change next to the points display
+        const pointsDisplay = document.querySelector('.points-display');
+        if (!pointsDisplay) return;
+        
+        // Remove any existing change indicator
+        const existing = pointsDisplay.querySelector('.points-change');
+        if (existing) existing.remove();
+        
+        const changeEl = document.createElement('span');
+        changeEl.className = `points-change ${type}`;
+        changeEl.textContent = text;
+        pointsDisplay.appendChild(changeEl);
+        
+        // Animate and remove
+        setTimeout(() => changeEl.remove(), 1500);
     }
 }
 

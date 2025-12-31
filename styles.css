@@ -600,6 +600,37 @@ body {
     text-shadow: 0 0 10px rgba(78, 205, 196, 0.5);
 }
 
+.points-change {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    margin-left: 10px;
+    animation: pointsPopup 1.5s ease forwards;
+}
+
+.points-change.error {
+    color: var(--secondary);
+}
+
+.points-change.success {
+    color: var(--success);
+}
+
+@keyframes pointsPopup {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: translateY(-10px) scale(1.2);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.8);
+    }
+}
+
 /* Difficulty Selection */
 .difficulty-selection {
     width: 100%;
