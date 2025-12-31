@@ -119,11 +119,6 @@ class BoardRenderer {
         this.canvas.style.width = size + 'px';
         this.canvas.style.height = size + 'px';
         
-        // Reset and scale context for high DPI
-        const ctx = this.canvas.getContext('2d');
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
-        ctx.scale(dpr, dpr);
-        
         this.cellSize = cellSize;
         this.dpr = dpr;
         this.render();
@@ -259,6 +254,11 @@ class BoardRenderer {
 
     render() {
         const ctx = this.ctx;
+        const dpr = this.dpr || 1;
+        
+        // Reset transform and apply DPR scale for each render
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        
         // Use logical size (CSS pixels), not canvas.width which is scaled by DPR
         const size = this.gridSize * this.cellSize;
         ctx.fillStyle = '#0a0a1a';
