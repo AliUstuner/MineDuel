@@ -903,9 +903,18 @@ class GameClient {
         
         switch (power) {
             case 'radar':
-                const nearbyMines = this.playerBoard.mines.slice(0, 3);
-                this.playerBoard.highlightMines(nearbyMines);
-                this.showNotification('📡 Radar: Mines detected!', 'info');
+                // Show only unflagged mines (max 3)
+                const unflaggedMines = this.playerBoard.mines.filter(m => {
+                    const cell = this.playerBoard.grid[m.y][m.x];
+                    return !cell.isFlagged && !cell.isRevealed;
+                }).slice(0, 3);
+                
+                if (unflaggedMines.length > 0) {
+                    this.playerBoard.highlightMines(unflaggedMines);
+                    this.showNotification(`📡 Radar: ${unflaggedMines.length} mines detected!`, 'info');
+                } else {
+                    this.showNotification('📡 Radar: No hidden mines found!', 'info');
+                }
                 break;
                 
             case 'safeburst':
@@ -941,6 +950,8 @@ class GameClient {
             case 'freeze':
                 this.broadcastPower('freeze', { duration: 5000 });
                 this.showNotification('❄️ Freeze sent!', 'success');
+                // Show freeze effect on opponent's board in my view
+                this.showOpponentFreezeEffect(5000);
                 break;
         }
     }
@@ -965,6 +976,17 @@ class GameClient {
             }
         };
         updateTimer();
+    }
+
+    showOpponentFreezeEffect(duration) {
+        // Show freeze overlay on opponent's board (in my view)
+        const opponentFrozen = document.getElementById('opponent-frozen');
+        if (opponentFrozen) {
+            opponentFrozen.classList.remove('hidden');
+            setTimeout(() => {
+                opponentFrozen.classList.add('hidden');
+            }, duration);
+        }
     }
 
     endGame(isWinner = null) {
