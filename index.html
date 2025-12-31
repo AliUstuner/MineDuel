@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MineDuel - Competitive Minesweeper</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Main Menu Screen -->
+        <div id="menu-screen" class="screen active">
+            <div class="menu-container">
+                <div class="logo-container">
+                    <h1 class="game-logo">
+                        <span class="logo-mine">💣</span>
+                        <span class="logo-text">MINE</span><span class="logo-duel">DUEL</span>
+                    </h1>
+                    <p class="tagline">Competitive Minesweeper</p>
+                </div>
+                
+                <div class="menu-content">
+                    <div class="player-name-input">
+                        <label for="player-name">Your Name</label>
+                        <input type="text" id="player-name" placeholder="Enter your name" maxlength="15" value="">
+                    </div>
+                    
+                    <div class="difficulty-selection">
+                        <label>Select Difficulty</label>
+                        <div class="difficulty-buttons">
+                            <button class="difficulty-btn" data-difficulty="easy">
+                                <span class="diff-icon">🟢</span>
+                                <span class="diff-name">Easy</span>
+                                <span class="diff-info">8x8 • 12 Mines</span>
+                            </button>
+                            <button class="difficulty-btn selected" data-difficulty="medium">
+                                <span class="diff-icon">🟡</span>
+                                <span class="diff-name">Medium</span>
+                                <span class="diff-info">10x10 • 20 Mines</span>
+                            </button>
+                            <button class="difficulty-btn" data-difficulty="hard">
+                                <span class="diff-icon">🔴</span>
+                                <span class="diff-name">Hard</span>
+                                <span class="diff-info">12x12 • 35 Mines</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <button id="find-game-btn" class="btn btn-primary btn-large">
+                        <span class="btn-icon">⚔️</span>
+                        <span class="btn-text">Find Match</span>
+                    </button>
+                    
+                    <div class="menu-stats">
+                        <div class="stat-item">
+                            <span class="stat-icon">🎮</span>
+                            <span class="stat-label">Real-Time PvP</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="menu-footer">
+                    <p>1v1 Real-Time Minesweeper Battle</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Matchmaking Screen -->
+        <div id="matchmaking-screen" class="screen">
+            <div class="matchmaking-container">
+                <div class="searching-animation">
+                    <div class="pulse-ring"></div>
+                    <div class="pulse-ring delay-1"></div>
+                    <div class="pulse-ring delay-2"></div>
+                    <div class="search-icon">🔍</div>
+                </div>
+                
+                <h2 class="searching-text">Searching for Opponent...</h2>
+                <p class="searching-subtext">Waiting for another player</p>
+                <p class="difficulty-display">Difficulty: <span id="selected-difficulty">Medium</span></p>
+                
+                <div class="search-timer">
+                    <span id="search-time">00:00</span>
+                </div>
+                
+                <button id="cancel-search-btn" class="btn btn-secondary">
+                    Cancel
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="screen">
+            <!-- Game Header -->
+            <div class="game-header">
+                <div class="match-timer">
+                    <span class="timer-icon">⏱️</span>
+                    <span id="game-timer">02:00</span>
+                </div>
+                <div class="game-title">VS</div>
+                <div class="audio-toggle">
+                    <button id="audio-btn" class="icon-btn">🔊</button>
+                </div>
+            </div>
+
+            <!-- Opponent Section -->
+            <div class="player-section opponent-section">
+                <div class="player-info">
+                    <div class="player-avatar opponent">👤</div>
+                    <div class="player-details">
+                        <span class="player-name-label" id="opponent-name">Opponent</span>
+                        <div class="player-score">
+                            <span class="score-label">Score:</span>
+                            <span class="score-value" id="opponent-score">0</span>
+                        </div>
+                    </div>
+                    <div class="completion-bar">
+                        <div class="completion-fill" id="opponent-completion"></div>
+                    </div>
+                </div>
+                <div class="board-container opponent-board">
+                    <canvas id="opponent-canvas" width="280" height="280"></canvas>
+                    <div class="board-overlay frozen-overlay hidden" id="opponent-frozen">
+                        <span>❄️</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle Section - Powers -->
+            <div class="powers-section">
+                <div class="points-display">
+                    <span class="points-icon">🏆</span>
+                    <span class="points-label">Your Points:</span>
+                    <span class="points-value" id="current-points">0</span>
+                </div>
+                
+                <div class="power-buttons">
+                    <button class="power-btn" data-power="radar" data-cost="30">
+                        <span class="power-icon">📡</span>
+                        <span class="power-name">Radar</span>
+                        <span class="power-cost">30 pts</span>
+                    </button>
+                    <button class="power-btn" data-power="safeburst" data-cost="40">
+                        <span class="power-icon">💥</span>
+                        <span class="power-name">Burst</span>
+                        <span class="power-cost">40 pts</span>
+                    </button>
+                    <button class="power-btn" data-power="shield" data-cost="50">
+                        <span class="power-icon">🛡️</span>
+                        <span class="power-name">Shield</span>
+                        <span class="power-cost">50 pts</span>
+                    </button>
+                    <button class="power-btn sabotage" data-power="freeze" data-cost="60">
+                        <span class="power-icon">❄️</span>
+                        <span class="power-name">Freeze</span>
+                        <span class="power-cost">60 pts</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Player Section -->
+            <div class="player-section player-section-main">
+                <div class="player-info">
+                    <div class="player-avatar you">👤</div>
+                    <div class="player-details">
+                        <span class="player-name-label" id="player-name-display">You</span>
+                        <div class="player-score">
+                            <span class="score-label">Score:</span>
+                            <span class="score-value" id="player-score">0</span>
+                        </div>
+                    </div>
+                    <div class="shield-indicator hidden" id="shield-indicator">🛡️</div>
+                </div>
+                <div class="board-container player-board">
+                    <canvas id="player-canvas" width="320" height="320"></canvas>
+                    <div class="board-overlay frozen-overlay hidden" id="player-frozen">
+                        <span>❄️ FROZEN</span>
+                        <span class="frozen-timer" id="frozen-timer">8s</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over Modal -->
+        <div id="game-over-modal" class="modal hidden">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content">
+                <div class="result-icon" id="result-icon">🏆</div>
+                <h2 class="result-title" id="result-title">Victory!</h2>
+                <div class="result-scores">
+                    <div class="result-player you">
+                        <span class="result-name" id="result-player-name">You</span>
+                        <span class="result-score" id="result-player-score">0</span>
+                    </div>
+                    <div class="result-vs">VS</div>
+                    <div class="result-player opponent">
+                        <span class="result-name" id="result-opponent-name">Opponent</span>
+                        <span class="result-score" id="result-opponent-score">0</span>
+                    </div>
+                </div>
+                <div class="result-actions">
+                    <button id="play-again-btn" class="btn btn-primary">Play Again</button>
+                    <button id="main-menu-btn" class="btn btn-secondary">Main Menu</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notification Container -->
+        <div id="notifications"></div>
+
+        <!-- Connection Status -->
+        <div id="connection-status" class="hidden">
+            <span class="status-dot"></span>
+            <span class="status-text">Connecting...</span>
+        </div>
+    </div>
+
+    <script type="module" src="js/game.js"></script>
+</body>
+</html>
