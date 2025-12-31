@@ -340,6 +340,11 @@ class GameClient {
         this.isFrozen = false;
         this.frozenUntil = 0;
         
+        // Mobile support
+        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        this.selectedCell = null;
+        this.mobileActionMenu = null;
+        
         this.matchStartTime = 0;
         this.matchDuration = CONFIG.MATCH_DURATION;
         this.timerInterval = null;
@@ -434,8 +439,24 @@ class GameClient {
             });
         });
         
-        document.getElementById('player-canvas')?.addEventListener('click', (e) => this.handleCellClick(e));
-        document.getElementById('player-canvas')?.addEventListener('contextmenu', (e) => {
+        const playerCanvas = document.getElementById('player-canvas');
+        
+        // Mobile: Show action menu on tap
+        if (this.isMobile) {
+            playerCanvas?.addEventListener('click', (e) => this.handleMobileTap(e));
+            
+            // Mobile action menu buttons
+            this.mobileActionMenu = document.getElementById('mobile-action-menu');
+            document.getElementById('mobile-dig-btn')?.addEventListener('click', () => this.mobileDigAction());
+            document.getElementById('mobile-flag-btn')?.addEventListener('click', () => this.mobileFlagAction());
+            document.getElementById('mobile-cancel-btn')?.addEventListener('click', () => this.hideMobileMenu());
+        } else {
+            // Desktop: Normal click handling
+            playerCanvas?.addEventListener('click', (e) => this.handleCellClick(e));
+        }
+        
+        // Right click for desktop (flag)
+        playerCanvas?.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             this.handleRightClick(e);
         });
@@ -857,6 +878,68 @@ class GameClient {
         cellData.isFlagged = !cellData.isFlagged;
         this.playerBoard.render();
         this.audio.playClick();
+    }
+
+    // ==================== MOBILE SUPPORT ====================
+    
+    handleMobileTap(e) {
+        if (this.isFrozen && Date.now() < this.frozenUntil) {
+            this.showNotification('You are frozen!', 'error');
+            return;
+        }
+        
+        const cell = this.playerBoard?.getCellFromClick(e);
+        if (!cell) return;
+        
+        const cellData = this.playerBoard.grid[cell.y][cell.x];
+        if (cellData.isRevealed) return;
+        
+        // Store selected cell
+        this.selectedCell = cell;
+        
+        // Show mobile action menu
+        this.showMobileMenu();
+    }
+    
+    showMobileMenu() {
+        if (!this.mobileActionMenu) return;
+        this.mobileActionMenu.classList.remove('hidden');
+    }
+    
+    hideMobileMenu() {
+        if (!this.mobileActionMenu) return;
+        this.mobileActionMenu.classList.add('hidden');
+        this.selectedCell = null;
+    }
+    
+    mobileDigAction() {
+        if (!this.selectedCell) return;
+        
+        // Create a fake event with the cell coordinates
+        const canvas = document.getElementById('player-canvas');
+        const rect = canvas.getBoundingClientRect();
+        const cellSize = this.playerBoard.cellSize;
+        
+        const fakeEvent = {
+            clientX: rect.left + (this.selectedCell.x * cellSize) + (cellSize / 2),
+            clientY: rect.top + (this.selectedCell.y * cellSize) + (cellSize / 2)
+        };
+        
+        this.hideMobileMenu();
+        this.handleCellClick(fakeEvent);
+    }
+    
+    mobileFlagAction() {
+        if (!this.selectedCell) return;
+        
+        const cellData = this.playerBoard.grid[this.selectedCell.y][this.selectedCell.x];
+        if (!cellData.isRevealed) {
+            cellData.isFlagged = !cellData.isFlagged;
+            this.playerBoard.render();
+            this.audio.playClick();
+        }
+        
+        this.hideMobileMenu();
     }
 
     handleOpponentMove(data) {

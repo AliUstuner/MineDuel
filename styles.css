@@ -1052,6 +1052,88 @@ body {
     display: none !important;
 }
 
+/* ==================== MOBILE ACTION MENU ==================== */
+.mobile-action-menu {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(21, 21, 48, 0.95);
+    border-radius: 16px;
+    border: 2px solid var(--primary);
+    box-shadow: 0 0 30px rgba(0, 212, 255, 0.4);
+    z-index: 1000;
+    animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+.mobile-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 12px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mobile-action-btn span:first-child {
+    font-size: 24px;
+}
+
+.mobile-action-btn.dig {
+    background: linear-gradient(135deg, var(--success), #2d9d94);
+    color: white;
+}
+
+.mobile-action-btn.flag {
+    background: linear-gradient(135deg, var(--warning), #cc9900);
+    color: #333;
+}
+
+.mobile-action-btn.cancel {
+    background: linear-gradient(135deg, #666, #444);
+    color: white;
+}
+
+.mobile-action-btn:active {
+    transform: scale(0.95);
+}
+
+/* Mobile cell highlight */
+.mobile-selected-cell {
+    position: absolute;
+    border: 3px solid var(--primary);
+    border-radius: 4px;
+    pointer-events: none;
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.6);
+    animation: pulse 1s ease infinite;
+    z-index: 10;
+}
+
+@keyframes pulse {
+    0%, 100% { box-shadow: 0 0 15px rgba(0, 212, 255, 0.6); }
+    50% { box-shadow: 0 0 25px rgba(0, 212, 255, 0.9); }
+}
+
 /* Responsive */
 @media (max-height: 700px) {
     .opponent-board canvas {
@@ -1074,6 +1156,153 @@ body {
     
     .logo-mine {
         font-size: 36px;
+    }
+}
+
+/* Mobile Responsive - General */
+@media (max-width: 500px) {
+    #app {
+        max-width: 100%;
+    }
+    
+    .game-layout {
+        padding: 5px;
+        gap: 8px;
+    }
+    
+    .opponent-section {
+        padding: 8px;
+    }
+    
+    .opponent-board canvas {
+        max-height: 120px;
+        max-width: 100%;
+    }
+    
+    .powers-section {
+        padding: 6px;
+    }
+    
+    .points-row {
+        flex-direction: column;
+        gap: 6px;
+    }
+    
+    .points-display {
+        width: 100%;
+        justify-content: center;
+        padding: 8px 12px;
+    }
+    
+    .power-notification {
+        width: 100%;
+        min-height: 40px;
+        font-size: 12px;
+    }
+    
+    .power-buttons {
+        gap: 6px;
+    }
+    
+    .power-btn {
+        padding: 8px 4px;
+        min-width: 0;
+        flex: 1;
+    }
+    
+    .power-btn .power-icon {
+        font-size: 18px;
+    }
+    
+    .power-btn .power-name {
+        font-size: 10px;
+    }
+    
+    .power-btn .power-cost {
+        font-size: 9px;
+    }
+    
+    .player-section {
+        padding: 8px;
+    }
+    
+    .player-board canvas {
+        max-width: 100%;
+        height: auto !important;
+    }
+    
+    .board-container.player-board {
+        width: 100%;
+        aspect-ratio: 1;
+    }
+    
+    .top-nav {
+        padding: 8px 10px;
+    }
+    
+    .nav-logo {
+        font-size: 14px !important;
+    }
+    
+    .nav-timer {
+        font-size: 14px !important;
+    }
+    
+    .nav-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+}
+
+/* Small phones */
+@media (max-width: 380px) {
+    .opponent-board canvas {
+        max-height: 100px;
+    }
+    
+    .points-value {
+        font-size: 22px;
+    }
+    
+    .points-label {
+        font-size: 12px;
+    }
+    
+    .power-btn .power-icon {
+        font-size: 16px;
+    }
+    
+    .power-btn .power-name {
+        font-size: 9px;
+    }
+    
+    .power-btn .power-cost {
+        font-size: 8px;
+    }
+}
+
+/* Landscape mode on mobile */
+@media (max-height: 500px) and (orientation: landscape) {
+    .game-layout {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    
+    .opponent-section {
+        width: 30%;
+    }
+    
+    .powers-section {
+        width: 100%;
+        order: 3;
+    }
+    
+    .player-section {
+        width: 65%;
+    }
+    
+    .opponent-board canvas {
+        max-height: 150px;
     }
 }
 
