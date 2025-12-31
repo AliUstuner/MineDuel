@@ -3,16 +3,21 @@
   "version": "1.0.0",
   "description": "Competitive 1v1 Minesweeper Game with Real-Time Multiplayer",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.38.4",
     "express": "^4.18.2",
     "ws": "^8.14.2",
     "uuid": "^9.0.0"
   },
   "keywords": ["minesweeper", "multiplayer", "game", "websocket"],
   "author": "MineDuel",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
 }
