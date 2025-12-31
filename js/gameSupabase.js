@@ -119,8 +119,9 @@ class BoardRenderer {
         this.canvas.style.width = size + 'px';
         this.canvas.style.height = size + 'px';
         
-        // Scale context for high DPI
+        // Reset and scale context for high DPI
         const ctx = this.canvas.getContext('2d');
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
         ctx.scale(dpr, dpr);
         
         this.cellSize = cellSize;
