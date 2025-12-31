@@ -911,9 +911,9 @@ class GameClient {
                 
                 if (unflaggedMines.length > 0) {
                     this.playerBoard.highlightMines(unflaggedMines);
-                    this.showNotification(`📡 Radar: ${unflaggedMines.length} mines detected!`, 'info');
+                    this.showPowerNotificationSimple('radar', `${unflaggedMines.length} mayın tespit edildi!`);
                 } else {
-                    this.showNotification('📡 Radar: No hidden mines found!', 'info');
+                    this.showPowerNotificationSimple('radar', 'Gizli mayın bulunamadı!');
                 }
                 break;
                 
@@ -938,19 +938,17 @@ class GameClient {
                 this.playerBoard.render();
                 this.score += burstPoints;
                 this.updateScore();
-                this.showNotification(`💥 Safe Burst: +${burstPoints} points!`, 'success');
+                this.showPowerNotificationSimple('safeburst', `+${burstPoints} puan kazanıldı!`);
                 break;
                 
             case 'shield':
                 this.hasShield = true;
                 this.shieldIndicator?.classList.remove('hidden');
-                this.showNotification('🛡️ Shield activated!', 'success');
                 this.showPowerNotificationSimple('shield', 'Kalkan Aktif! (1 mayın)');
                 break;
                 
             case 'freeze':
                 this.broadcastPower('freeze', { duration: 5000 });
-                this.showNotification('❄️ Freeze sent!', 'success');
                 // Show freeze effect on opponent's board in my view
                 this.showOpponentFreezeEffect(5000);
                 break;
@@ -982,11 +980,23 @@ class GameClient {
     showOpponentFreezeEffect(duration) {
         // Show freeze overlay on opponent's board (in my view)
         const opponentFrozen = document.getElementById('opponent-frozen');
+        const freezeTimer = document.getElementById('opponent-freeze-timer');
+        
         if (opponentFrozen) {
             opponentFrozen.classList.remove('hidden');
-            setTimeout(() => {
-                opponentFrozen.classList.add('hidden');
-            }, duration);
+            
+            // Countdown on the overlay
+            let remainingSeconds = Math.ceil(duration / 1000);
+            if (freezeTimer) freezeTimer.textContent = `${remainingSeconds}s`;
+            
+            const countdownInterval = setInterval(() => {
+                remainingSeconds--;
+                if (freezeTimer) freezeTimer.textContent = `${remainingSeconds}s`;
+                if (remainingSeconds <= 0) {
+                    clearInterval(countdownInterval);
+                    opponentFrozen.classList.add('hidden');
+                }
+            }, 1000);
         }
         
         // Show power notification with countdown
