@@ -1189,30 +1189,53 @@ body {
         flex-direction: column;
     }
     
-    /* Hide opponent board on small phones, show only info bar */
+    /* REORDER: Player first (order 1), Powers (order 2), Opponent last (order 3) */
+    .player-section {
+        order: 1;
+        padding: 4px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+    
+    .powers-section {
+        order: 2;
+        padding: 4px 6px;
+        flex-shrink: 0;
+    }
+    
     .opponent-section {
-        padding: 6px 8px;
+        order: 3;
+        padding: 4px 6px;
         flex-shrink: 0;
         background: var(--card);
         border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
     }
     
+    /* Opponent - minimal inline bar */
     .opponent-info {
         padding: 0;
         margin-bottom: 0;
+        flex: 1;
     }
     
     .opponent-avatar {
-        width: 28px;
-        height: 28px;
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
     }
     
     .opponent-name {
-        font-size: 13px;
+        font-size: 12px;
     }
     
     .opponent-score .score-value {
-        font-size: 16px;
+        font-size: 14px;
     }
     
     .board-container.opponent-board {
@@ -1223,88 +1246,75 @@ body {
         display: none;
     }
     
-    /* Powers section - compact */
-    .powers-section {
-        padding: 6px;
-        flex-shrink: 0;
-    }
-    
+    /* Powers section - compact inline */
     .points-row {
         flex-direction: row;
-        gap: 6px;
-        margin-bottom: 6px;
+        gap: 4px;
+        margin-bottom: 4px;
     }
     
     .points-display {
-        padding: 6px 10px;
+        padding: 4px 8px;
     }
     
     .points-icon {
-        font-size: 16px;
+        font-size: 14px;
     }
     
     .points-label {
-        font-size: 10px;
+        font-size: 9px;
     }
     
     .points-value {
-        font-size: 20px;
+        font-size: 18px;
     }
     
     .power-notification {
         flex: 1;
-        min-height: 32px;
-        font-size: 11px;
-        padding: 6px 8px;
+        min-height: 28px;
+        font-size: 10px;
+        padding: 4px 6px;
     }
     
     .power-buttons {
-        gap: 6px;
+        gap: 4px;
     }
     
     .power-btn {
-        padding: 6px 4px;
+        padding: 4px 2px;
     }
     
     .power-btn .power-icon {
-        font-size: 16px;
+        font-size: 14px;
     }
     
     .power-btn .power-name {
-        font-size: 9px;
-    }
-    
-    .power-btn .power-cost {
         font-size: 8px;
     }
     
-    /* Player section - MAXIMIZE */
-    .player-section {
-        padding: 4px;
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        overflow: hidden;
+    .power-btn .power-cost {
+        font-size: 7px;
     }
     
+    /* Player section - MAXIMIZE */
     .player-info {
-        padding: 6px 8px;
-        margin-bottom: 4px;
+        padding: 4px 8px;
+        margin-bottom: 2px;
         flex-shrink: 0;
     }
     
     .player-avatar {
-        width: 28px;
-        height: 28px;
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
     }
     
     .player-name-label {
-        font-size: 13px;
+        font-size: 12px;
     }
     
     .player-score .score-value {
-        font-size: 16px;
+        font-size: 14px;
     }
     
     .board-container.player-board {
@@ -1313,40 +1323,40 @@ body {
         align-items: center;
         justify-content: center;
         min-height: 0;
-        padding: 4px;
+        padding: 0;
     }
     
     #player-canvas {
-        width: 100% !important;
+        width: auto !important;
         height: auto !important;
-        max-width: calc(100dvh - 280px);
-        max-height: calc(100dvh - 280px);
+        max-width: 100%;
+        max-height: 100%;
         aspect-ratio: 1;
     }
     
     /* Top nav compact */
     .top-nav {
-        padding: 6px 10px;
-        height: 40px;
+        padding: 4px 8px;
+        height: 36px;
     }
     
     .nav-logo {
-        font-size: 12px !important;
+        font-size: 11px !important;
     }
     
     .nav-timer {
-        font-size: 12px !important;
-        padding: 4px 8px !important;
+        font-size: 11px !important;
+        padding: 3px 6px !important;
     }
     
     .nav-btn {
-        padding: 4px 8px;
-        font-size: 10px;
+        padding: 3px 6px;
+        font-size: 9px;
     }
     
     /* Mobile action menu */
     .mobile-action-menu {
-        bottom: 10px;
+        bottom: 60px;
     }
 }
 
