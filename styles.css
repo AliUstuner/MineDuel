@@ -1083,21 +1083,21 @@ body {
 
 .mobile-action-btn {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 1px;
-    padding: 5px 10px;
+    gap: 3px;
+    padding: 6px 10px;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     font-family: 'Rajdhani', sans-serif;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .mobile-action-btn span:first-child {
-    font-size: 14px;
+    font-size: 12px;
 }
 
 .mobile-action-btn.dig {
@@ -1218,23 +1218,50 @@ body {
     
     /* Player (MY) board - MAXIMIZE */
     .player-section-main .player-info {
-        padding: 4px 8px;
-        margin-bottom: 2px;
+        display: flex !important;
+        align-items: center;
+        padding: 8px 10px;
+        margin-bottom: 4px;
         flex-shrink: 0;
+        background: rgba(21, 21, 48, 0.8);
+        border-radius: 8px;
+        border: 1px solid var(--primary);
+        gap: 8px;
     }
     
     .player-section-main .player-avatar {
-        width: 24px;
-        height: 24px;
-        font-size: 12px;
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+    
+    .player-section-main .player-details {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        min-width: 60px;
     }
     
     .player-section-main .player-name-label {
         font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .player-section-main .player-score {
+        display: flex !important;
+        gap: 4px;
+        font-size: 11px;
+    }
+    
+    .player-section-main .player-score .score-label {
+        opacity: 0.7;
     }
     
     .player-section-main .player-score .score-value {
-        font-size: 14px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--success);
     }
     
     .board-container.player-board {
@@ -1249,8 +1276,8 @@ body {
     #player-canvas {
         width: auto !important;
         height: auto !important;
-        max-width: 100%;
-        max-height: 100%;
+        max-width: calc(100vw - 40px);
+        max-height: calc(100dvh - 320px);
         aspect-ratio: 1;
     }
     
