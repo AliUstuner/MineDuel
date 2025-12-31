@@ -186,6 +186,19 @@ export async function getOpponentFromQueue(odaGameId, myUserId) {
     return data;
 }
 
+export async function findAllInQueue(difficulty, excludeUserId) {
+    const { data, error } = await supabase
+        .from('matchmaking_queue')
+        .select('*')
+        .eq('difficulty', difficulty)
+        .neq('user_id', excludeUserId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+    if (error) return [];
+    return data || [];
+}
+
 export async function updateMatchStatus(odaId, odaUsers, odaStatus, matchId = null) {
     const { error } = await supabase
         .from('matchmaking_queue')

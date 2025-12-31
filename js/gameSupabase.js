@@ -131,8 +131,8 @@ class BoardRenderer {
         this.mines = [];
         const positions = [];
         
-        // Exclude a larger area around first click (5x5) to ensure opening
-        const excludeRadius = 2; // 5x5 area (2 cells in each direction)
+        // Exclude a 3x3 area around first click (guaranteed safe start)
+        const excludeRadius = 1; // 3x3 area
         
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
@@ -556,9 +556,20 @@ class GameClient {
                     this.gameId = myStatus.match_id;
                     this.isHost = false;
                     
-                    // Get opponent info
+                    // Try multiple ways to get opponent name
+                    let opponentName = 'Rakip';
+                    
+                    // Method 1: Try queue
                     const opponentInfo = await SupabaseClient.getOpponentFromQueue(myStatus.match_id, odaUserId);
-                    const opponentName = opponentInfo?.username || 'Rakip';
+                    if (opponentInfo?.username) {
+                        opponentName = opponentInfo.username;
+                    } else {
+                        // Method 2: Try getting from all queue entries with same difficulty
+                        const allWaiting = await SupabaseClient.findAllInQueue(difficulty, odaUserId);
+                        if (allWaiting && allWaiting.length > 0) {
+                            opponentName = allWaiting[0].username;
+                        }
+                    }
                     
                     this.startGame({
                         gameId: myStatus.match_id,
