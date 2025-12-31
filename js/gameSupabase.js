@@ -545,9 +545,13 @@ class GameClient {
                     this.gameId = myStatus.match_id;
                     this.isHost = false;
                     
+                    // Get opponent info
+                    const opponentInfo = await SupabaseClient.getOpponentFromQueue(myStatus.match_id, odaUserId);
+                    const opponentName = opponentInfo?.username || 'Rakip';
+                    
                     this.startGame({
                         gameId: myStatus.match_id,
-                        opponent: 'Rakip',
+                        opponent: opponentName,
                         difficulty: difficulty,
                         gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
                         mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount

@@ -162,6 +162,32 @@ export async function getMyQueueStatus(userId) {
     return data;
 }
 
+export async function getGameInfo(gameId) {
+    const { data, error } = await supabase
+        .from('games')
+        .select('*')
+        .eq('id', gameId)
+        .single();
+
+    if (error) return null;
+    return data;
+}
+
+export async function getOpponentFromQueue(odaGameId, myUserId) {
+    // Find the other player in the queue with same match_id
+    const { data, error } = await supabase
+        .from('matchmaking_queue')
+        .select('*')
+        .eq('match_id', odaGameId)
+        .neq('user_id', myUserId)
+        .single();
+
+    if (error) return null;
+    return data;
+}    if (error) return null;
+    return data;
+}
+
 export async function updateMatchStatus(odaId, odaUsers, odaStatus, matchId = null) {
     const { error } = await supabase
         .from('matchmaking_queue')
