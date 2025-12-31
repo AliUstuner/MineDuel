@@ -791,8 +791,8 @@ class GameClient {
                     points -= 30;
                 }
             } else {
-                // Empty cells give 5 points, numbered cells give their number
-                points += c.neighborCount > 0 ? c.neighborCount : 5;
+                // Every revealed cell gives 5 points
+                points += 5;
             }
         });
         
