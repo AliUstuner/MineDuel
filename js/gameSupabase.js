@@ -748,6 +748,9 @@ class GameClient {
             .on('broadcast', { event: 'move' }, (payload) => {
                 this.handleOpponentMove(payload.payload);
             })
+            .on('broadcast', { event: 'flag' }, (payload) => {
+                this.handleOpponentFlag(payload.payload);
+            })
             .on('broadcast', { event: 'power' }, (payload) => {
                 this.handleOpponentPower(payload.payload);
             })
@@ -881,6 +884,9 @@ class GameClient {
         cellData.isFlagged = !cellData.isFlagged;
         this.playerBoard.render();
         this.audio.playClick();
+        
+        // Broadcast flag to opponent
+        this.broadcastFlag(cell.x, cell.y, cellData.isFlagged);
     }
 
     // ==================== MOBILE SUPPORT ====================
@@ -1021,6 +1027,9 @@ class GameClient {
             cellData.isFlagged = !cellData.isFlagged;
             this.playerBoard.render();
             this.audio.playClick();
+            
+            // Broadcast flag to opponent
+            this.broadcastFlag(cell.x, cell.y, cellData.isFlagged);
         }
         
         this.removeHighlight();
@@ -1079,6 +1088,23 @@ class GameClient {
                 event: 'move',
                 payload: data
             });
+        }
+    }
+    
+    broadcastFlag(x, y, isFlagged) {
+        if (this.gameChannel) {
+            this.gameChannel.send({
+                type: 'broadcast',
+                event: 'flag',
+                payload: { x, y, isFlagged }
+            });
+        }
+    }
+    
+    handleOpponentFlag(data) {
+        if (this.opponentBoard && this.opponentBoard.grid[data.y] && this.opponentBoard.grid[data.y][data.x]) {
+            this.opponentBoard.grid[data.y][data.x].isFlagged = data.isFlagged;
+            this.opponentBoard.render();
         }
     }
 
