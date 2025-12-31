@@ -1039,6 +1039,38 @@ body {
     color: var(--primary);
 }
 
+.nav-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.nav-timer {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--warning);
+    background: var(--dark);
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--warning);
+}
+
+.nav-timer.hidden {
+    display: none;
+}
+
+.nav-timer.danger {
+    color: var(--secondary);
+    border-color: var(--secondary);
+    animation: timerPulse 0.5s ease infinite;
+}
+
+@keyframes timerPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
 .nav-right {
     display: flex;
     align-items: center;

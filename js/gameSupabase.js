@@ -736,19 +736,37 @@ class GameClient {
     startGameTimer() {
         if (this.timerInterval) clearInterval(this.timerInterval);
         
+        // Show nav timer
+        const navTimer = document.getElementById('nav-timer');
+        if (navTimer) navTimer.classList.remove('hidden');
+        
         this.timerInterval = setInterval(() => {
             const elapsed = Date.now() - this.matchStartTime;
             const remaining = Math.max(0, this.matchDuration - elapsed);
             
             const mins = Math.floor(remaining / 60000);
             const secs = Math.floor((remaining % 60000) / 1000);
+            const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
             
+            // Update game screen timer
             if (this.gameTimerDisplay) {
-                this.gameTimerDisplay.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                this.gameTimerDisplay.textContent = timeStr;
+            }
+            
+            // Update nav timer
+            if (navTimer) {
+                navTimer.textContent = `⏱️ ${timeStr}`;
+                // Add danger class when less than 30 seconds
+                if (remaining <= 30000) {
+                    navTimer.classList.add('danger');
+                } else {
+                    navTimer.classList.remove('danger');
+                }
             }
             
             if (remaining <= 0) {
                 clearInterval(this.timerInterval);
+                if (navTimer) navTimer.classList.add('hidden');
                 this.endGame();
             }
         }, 100);
@@ -848,7 +866,7 @@ class GameClient {
 
     handleOpponentPower(data) {
         if (data.power === 'freeze') {
-            this.handleFrozen(data.duration || 3000);
+            this.handleFrozen(data.duration || 5000);
         }
     }
 
@@ -921,7 +939,7 @@ class GameClient {
                 break;
                 
             case 'freeze':
-                this.broadcastPower('freeze', { duration: 3000 });
+                this.broadcastPower('freeze', { duration: 5000 });
                 this.showNotification('❄️ Freeze sent!', 'success');
                 break;
         }
@@ -954,6 +972,10 @@ class GameClient {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
         }
+        
+        // Hide nav timer
+        const navTimer = document.getElementById('nav-timer');
+        if (navTimer) navTimer.classList.add('hidden');
         
         // Determine winner by score if not specified
         if (isWinner === null) {
