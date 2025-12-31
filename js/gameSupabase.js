@@ -945,6 +945,7 @@ class GameClient {
                 this.hasShield = true;
                 this.shieldIndicator?.classList.remove('hidden');
                 this.showNotification('🛡️ Shield activated!', 'success');
+                this.showPowerNotificationSimple('shield', 'Kalkan Aktif! (1 mayın)');
                 break;
                 
             case 'freeze':
@@ -987,6 +988,83 @@ class GameClient {
                 opponentFrozen.classList.add('hidden');
             }, duration);
         }
+        
+        // Show power notification with countdown
+        this.showPowerNotification('freeze', duration);
+    }
+    
+    showPowerNotification(powerType, duration) {
+        const notification = document.getElementById('power-notification');
+        if (!notification) return;
+        
+        // Clear any existing interval
+        if (this.powerNotificationInterval) {
+            clearInterval(this.powerNotificationInterval);
+        }
+        
+        const icons = {
+            freeze: '❄️',
+            radar: '📡',
+            shield: '🛡️',
+            safeburst: '💥'
+        };
+        
+        const messages = {
+            freeze: 'Rakip Donduruldu',
+            radar: 'Radar Aktif',
+            shield: 'Kalkan Aktif',
+            safeburst: 'Burst Kullanıldı'
+        };
+        
+        let remainingSeconds = Math.ceil(duration / 1000);
+        
+        // Set initial content
+        notification.className = 'power-notification show ' + powerType;
+        notification.innerHTML = `${icons[powerType]} ${messages[powerType]}: <span style="margin-left: 5px; font-weight: bold;">${remainingSeconds}s</span>`;
+        
+        // Update countdown every second
+        this.powerNotificationInterval = setInterval(() => {
+            remainingSeconds--;
+            if (remainingSeconds <= 0) {
+                clearInterval(this.powerNotificationInterval);
+                notification.classList.remove('show');
+                setTimeout(() => {
+                    notification.className = 'power-notification';
+                    notification.innerHTML = '';
+                }, 300);
+            } else {
+                notification.innerHTML = `${icons[powerType]} ${messages[powerType]}: <span style="margin-left: 5px; font-weight: bold;">${remainingSeconds}s</span>`;
+            }
+        }, 1000);
+    }
+    
+    showPowerNotificationSimple(powerType, message) {
+        const notification = document.getElementById('power-notification');
+        if (!notification) return;
+        
+        // Clear any existing interval
+        if (this.powerNotificationInterval) {
+            clearInterval(this.powerNotificationInterval);
+        }
+        
+        const icons = {
+            freeze: '❄️',
+            radar: '📡',
+            shield: '🛡️',
+            safeburst: '💥'
+        };
+        
+        notification.className = 'power-notification show ' + powerType;
+        notification.innerHTML = `${icons[powerType]} ${message}`;
+        
+        // Auto hide after 3 seconds
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => {
+                notification.className = 'power-notification';
+                notification.innerHTML = '';
+            }, 300);
+        }, 3000);
     }
 
     endGame(isWinner = null) {

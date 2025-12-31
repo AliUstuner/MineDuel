@@ -570,17 +570,75 @@ body {
     text-align: right;
 }
 
+/* Points Row - Container for points and notifications */
+.points-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    width: 100%;
+}
+
 /* Points Display (replaces energy) */
 .points-display {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 10px;
-    margin-bottom: 12px;
     padding: 10px 20px;
     background: linear-gradient(135deg, var(--card-light), var(--dark));
     border-radius: 12px;
     border: 2px solid var(--success);
+    flex-shrink: 0;
+}
+
+/* Power Notification */
+.power-notification {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 15px;
+    background: linear-gradient(135deg, var(--card-light), var(--dark));
+    border-radius: 12px;
+    border: 2px solid var(--primary);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    color: var(--primary);
+    min-height: 48px;
+    flex: 1;
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity 0.3s, transform 0.3s;
+}
+
+.power-notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.power-notification.freeze {
+    border-color: #00bcd4;
+    color: #00bcd4;
+    background: linear-gradient(135deg, rgba(0, 188, 212, 0.2), var(--dark));
+}
+
+.power-notification.radar {
+    border-color: #ff9800;
+    color: #ff9800;
+    background: linear-gradient(135deg, rgba(255, 152, 0, 0.2), var(--dark));
+}
+
+.power-notification.shield {
+    border-color: #4fc3f7;
+    color: #4fc3f7;
+    background: linear-gradient(135deg, rgba(79, 195, 247, 0.2), var(--dark));
+}
+
+.power-notification.safeburst {
+    border-color: #e91e63;
+    color: #e91e63;
+    background: linear-gradient(135deg, rgba(233, 30, 99, 0.2), var(--dark));
 }
 
 .points-icon {
