@@ -130,19 +130,30 @@ class BoardRenderer {
     generateMines(mineCount, excludeX = -1, excludeY = -1) {
         this.mines = [];
         const positions = [];
+        
+        // Exclude a larger area around first click (5x5) to ensure opening
+        const excludeRadius = 2; // 5x5 area (2 cells in each direction)
+        
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
-                if (!(x === excludeX && y === excludeY)) {
+                // Check if this cell is within the excluded area
+                const isExcluded = Math.abs(x - excludeX) <= excludeRadius && 
+                                   Math.abs(y - excludeY) <= excludeRadius;
+                if (!isExcluded) {
                     positions.push({ x, y });
                 }
             }
         }
+        
+        // Make sure we have enough positions for mines
+        const actualMineCount = Math.min(mineCount, positions.length);
+        
         // Shuffle and pick
         for (let i = positions.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [positions[i], positions[j]] = [positions[j], positions[i]];
         }
-        this.mines = positions.slice(0, mineCount);
+        this.mines = positions.slice(0, actualMineCount);
         
         // Mark mines on grid
         this.mines.forEach(m => {
