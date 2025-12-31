@@ -1189,9 +1189,10 @@ body {
         flex-direction: column;
     }
     
-    /* REORDER: Player first (order 1), Powers (order 2), Opponent last (order 3) */
-    .player-section {
-        order: 1;
+    /* REORDER with flexbox order */
+    /* Player section (MY board) - FIRST and BIGGEST */
+    .player-section-main {
+        order: 1 !important;
         padding: 4px;
         flex: 1;
         display: flex;
@@ -1200,49 +1201,87 @@ body {
         overflow: hidden;
     }
     
+    /* Powers section - MIDDLE */
     .powers-section {
-        order: 2;
+        order: 2 !important;
         padding: 4px 6px;
         flex-shrink: 0;
     }
     
+    /* Opponent section (ENEMY board) - LAST at bottom */
     .opponent-section {
-        order: 3;
+        order: 3 !important;
         padding: 4px 6px;
         flex-shrink: 0;
         background: var(--card);
         border-radius: 8px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
     }
     
-    /* Opponent - minimal inline bar */
-    .opponent-info {
-        padding: 0;
-        margin-bottom: 0;
-        flex: 1;
+    /* Player (MY) board - MAXIMIZE */
+    .player-section-main .player-info {
+        padding: 4px 8px;
+        margin-bottom: 2px;
+        flex-shrink: 0;
     }
     
-    .opponent-avatar {
+    .player-section-main .player-avatar {
         width: 24px;
         height: 24px;
         font-size: 12px;
     }
     
+    .player-section-main .player-name-label {
+        font-size: 12px;
+    }
+    
+    .player-section-main .player-score .score-value {
+        font-size: 14px;
+    }
+    
+    .board-container.player-board {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 0;
+        padding: 0;
+    }
+    
+    #player-canvas {
+        width: auto !important;
+        height: auto !important;
+        max-width: 100%;
+        max-height: 100%;
+        aspect-ratio: 1;
+    }
+    
+    /* Opponent (ENEMY) section - show info, hide board on small screens */
+    .opponent-section .player-info {
+        padding: 0;
+        margin-bottom: 0;
+    }
+    
+    .opponent-section .player-avatar {
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+    }
+    
+    .opponent-section .player-name-label,
     .opponent-name {
         font-size: 12px;
     }
     
-    .opponent-score .score-value {
+    .opponent-section .player-score .score-value {
         font-size: 14px;
     }
     
+    /* Hide opponent board on very small screens */
     .board-container.opponent-board {
         display: none !important;
     }
     
-    .completion-bar {
+    .opponent-section .completion-bar {
         display: none;
     }
     
@@ -1296,44 +1335,6 @@ body {
         font-size: 7px;
     }
     
-    /* Player section - MAXIMIZE */
-    .player-info {
-        padding: 4px 8px;
-        margin-bottom: 2px;
-        flex-shrink: 0;
-    }
-    
-    .player-avatar {
-        width: 24px;
-        height: 24px;
-        font-size: 12px;
-    }
-    
-    .player-name-label {
-        font-size: 12px;
-    }
-    
-    .player-score .score-value {
-        font-size: 14px;
-    }
-    
-    .board-container.player-board {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 0;
-        padding: 0;
-    }
-    
-    #player-canvas {
-        width: auto !important;
-        height: auto !important;
-        max-width: 100%;
-        max-height: 100%;
-        aspect-ratio: 1;
-    }
-    
     /* Top nav compact */
     .top-nav {
         padding: 4px 8px;
@@ -1354,10 +1355,45 @@ body {
         font-size: 9px;
     }
     
-    /* Mobile action menu */
-    .mobile-action-menu {
-        bottom: 60px;
+    /* Game header compact */
+    .game-header {
+        padding: 4px 8px;
+        min-height: 32px;
     }
+    
+    .match-timer {
+        font-size: 14px;
+    }
+    
+    .game-title {
+        font-size: 14px;
+    }
+    
+    /* Mobile action menu - position above opponent bar */
+    .mobile-action-menu {
+        bottom: 50px;
+    }
+}
+
+/* Medium phones - show small opponent board if space */
+@media (min-width: 380px) and (max-width: 480px) and (min-height: 700px) {
+    .board-container.opponent-board {
+        display: flex !important;
+        justify-content: center;
+        margin-top: 4px;
+    }
+    
+    #opponent-canvas {
+        max-width: 100px !important;
+        max-height: 100px !important;
+    }
+    
+    .opponent-section .completion-bar {
+        display: block;
+        height: 3px;
+        margin-top: 4px;
+    }
+}
 }
 
 /* Tablets - Portrait & Small Laptops (481px - 768px) */
