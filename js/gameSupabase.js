@@ -457,7 +457,7 @@ class GameClient {
         // Remove the failed to connect message
         const notification = document.querySelector('.notification.error');
         if (notification) notification.remove();
-        this.showNotification('Connected via Supabase Realtime', 'success');
+        // Silent connection - no notification needed
     }
 
     updateAuthUI() {
@@ -527,9 +527,8 @@ class GameClient {
             }
         } catch (error) {
             console.error('Matchmaking error:', error);
-            this.showNotification('Matchmaking error. Trying offline mode...', 'error');
-            // Start offline/bot game
-            this.startOfflineGame(difficulty);
+            this.showNotification('Searching for players...', 'info');
+            // Keep waiting for real players instead of starting bot
         }
     }
 
@@ -556,19 +555,8 @@ class GameClient {
     }
 
     startOfflineGame(difficulty) {
-        // Start a game against a simple bot
-        this.isHost = true;
-        this.opponentName = 'Bot';
-        this.gameId = 'offline_' + Date.now();
-        
-        this.startGame({
-            gameId: this.gameId,
-            opponent: 'Bot',
-            difficulty: difficulty,
-            gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
-            mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
-            isOffline: true
-        });
+        // Disabled - waiting for real players only
+        console.log('Bot mode disabled, waiting for real players...');
     }
 
     async cancelSearch() {
@@ -729,7 +717,8 @@ class GameClient {
                     points -= 25;
                 }
             } else {
-                points += c.neighborCount > 0 ? c.neighborCount : 1;
+                // Empty cells give 5 points, numbered cells give their number
+                points += c.neighborCount > 0 ? c.neighborCount : 5;
             }
         });
         
@@ -742,7 +731,7 @@ class GameClient {
             this.showNotification(`💣 Mine hit! -25 points`, 'error');
         } else if (points > 0) {
             this.audio.playReveal(revealed.length);
-            this.showNotification(`+${points} points!`, 'success');
+            // Score updates in UI, no notification needed
         }
         
         // Broadcast move
