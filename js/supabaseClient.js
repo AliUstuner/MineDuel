@@ -184,8 +184,6 @@ export async function getOpponentFromQueue(odaGameId, myUserId) {
 
     if (error) return null;
     return data;
-}    if (error) return null;
-    return data;
 }
 
 export async function updateMatchStatus(odaId, odaUsers, odaStatus, matchId = null) {
