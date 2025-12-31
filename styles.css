@@ -1188,15 +1188,13 @@ body {
     }
     
     /* REORDER with flexbox order */
-    /* Player section (MY board) - FIRST and BIGGEST */
-    .player-section-main {
+    /* Opponent section (ENEMY board) - TOP */
+    .opponent-section {
         order: 1 !important;
-        padding: 4px;
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        overflow: hidden;
+        padding: 4px 6px;
+        flex-shrink: 0;
+        background: var(--card);
+        border-radius: 8px;
     }
     
     /* Powers section - MIDDLE */
@@ -1206,13 +1204,15 @@ body {
         flex-shrink: 0;
     }
     
-    /* Opponent section (ENEMY board) - LAST at bottom */
-    .opponent-section {
+    /* Player section (MY board) - BOTTOM and BIGGEST */
+    .player-section-main {
         order: 3 !important;
-        padding: 4px 6px;
-        flex-shrink: 0;
-        background: var(--card);
-        border-radius: 8px;
+        padding: 4px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
     }
     
     /* Player (MY) board - MAXIMIZE */
