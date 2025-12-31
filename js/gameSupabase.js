@@ -454,10 +454,11 @@ class GameClient {
     }
 
     hideConnectionError() {
-        // Remove the failed to connect message
+        // Remove any error notification
         const notification = document.querySelector('.notification.error');
         if (notification) notification.remove();
-        // Silent connection - no notification needed
+        // Show connection success on site load
+        this.showNotification('Sunucuya bağlanıldı', 'success');
     }
 
     updateAuthUI() {
@@ -527,23 +528,62 @@ class GameClient {
             }
         } catch (error) {
             console.error('Matchmaking error:', error);
-            this.showNotification('Searching for players...', 'info');
-            // Keep waiting for real players instead of starting bot
+            // Silent retry - keep waiting for players
         }
     }
 
-    handleMatchmakingUpdate(payload, odaUserId, playerName) {
-        if (payload.eventType === 'INSERT' && payload.new.user_id !== odaUserId) {
-            // New player joined! They will be the host
-            // We become the opponent
+    async handleMatchmakingUpdate(payload, odaUserId, playerName) {
+        console.log('Matchmaking update:', payload);
+        
+        // New player joined the queue - we should try to match with them
+        if (payload.eventType === 'INSERT' && payload.new.user_id !== odaUserId && payload.new.status === 'waiting') {
+            const opponent = payload.new;
+            
+            // We are the host, create the game
+            this.isHost = true;
+            this.opponentId = opponent.user_id;
+            this.opponentName = opponent.username;
+            
+            try {
+                // Create game
+                const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, this.selectedDifficulty);
+                this.gameId = game.id;
+                
+                // Update both players' queue status
+                await SupabaseClient.updateMatchStatus(null, odaUserId, 'matched', game.id);
+                await SupabaseClient.updateMatchStatus(null, opponent.user_id, 'matched', game.id);
+                
+                // Unsubscribe from matchmaking
+                if (this.matchmakingChannel) {
+                    SupabaseClient.unsubscribe(this.matchmakingChannel);
+                    this.matchmakingChannel = null;
+                }
+                
+                // Start the game
+                this.startGame({
+                    gameId: game.id,
+                    opponent: opponent.username,
+                    difficulty: this.selectedDifficulty,
+                    gridSize: CONFIG.DIFFICULTIES[this.selectedDifficulty].gridSize,
+                    mineCount: CONFIG.DIFFICULTIES[this.selectedDifficulty].mineCount
+                });
+            } catch (e) {
+                console.error('Failed to create game:', e);
+            }
         }
         
+        // Our status was updated to matched - someone else created a game for us
         if (payload.eventType === 'UPDATE' && payload.new.user_id === odaUserId && payload.new.status === 'matched') {
-            // We got matched!
             this.gameId = payload.new.match_id;
             this.isHost = false;
             
-            // Get opponent info and start game
+            // Unsubscribe from matchmaking
+            if (this.matchmakingChannel) {
+                SupabaseClient.unsubscribe(this.matchmakingChannel);
+                this.matchmakingChannel = null;
+            }
+            
+            // Start game
             this.startGame({
                 gameId: payload.new.match_id,
                 opponent: 'Opponent',
