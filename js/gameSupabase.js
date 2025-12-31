@@ -343,8 +343,8 @@ class GameClient {
         this.isFrozen = false;
         this.frozenUntil = 0;
         
-        // Mobile support
-        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        // Mobile/Touch support - detect touch capability, not screen size
+        this.isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
         this.selectedCell = null;
         this.mobileActionMenu = null;
         
@@ -444,8 +444,8 @@ class GameClient {
         
         const playerCanvas = document.getElementById('player-canvas');
         
-        // Mobile: Show action menu on tap
-        if (this.isMobile) {
+        // Touch devices: Show action menu on tap
+        if (this.isTouchDevice) {
             playerCanvas?.addEventListener('click', (e) => this.handleMobileTap(e));
             
             // Mobile action menu buttons

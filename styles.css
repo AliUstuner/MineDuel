@@ -1160,17 +1160,17 @@ body {
     }
 }
 
-/* Mobile Responsive - General */
-@media (max-width: 500px) {
+/* ==================== RESPONSIVE BREAKPOINTS ==================== */
+
+/* Phones - Portrait (max-width: 480px) */
+@media (max-width: 480px) {
     html, body {
-        height: 100%;
         height: 100dvh;
         overflow: hidden;
     }
     
     #app {
         max-width: 100%;
-        height: 100%;
         height: 100dvh;
         overflow: hidden;
     }
@@ -1182,20 +1182,17 @@ body {
     
     .game-layout {
         padding: 4px;
-        gap: 2px;
-        height: calc(100dvh - 44px);
+        gap: 4px;
+        height: calc(100dvh - 40px);
         overflow: hidden;
         display: flex;
         flex-direction: column;
     }
     
-    /* Opponent section - minimal inline */
+    /* Hide opponent board on small phones, show only info bar */
     .opponent-section {
-        padding: 2px 6px;
+        padding: 6px 8px;
         flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        gap: 8px;
         background: var(--card);
         border-radius: 8px;
     }
@@ -1203,28 +1200,19 @@ body {
     .opponent-info {
         padding: 0;
         margin-bottom: 0;
-        flex: 1;
-        display: flex;
-        align-items: center;
-        gap: 6px;
     }
     
     .opponent-avatar {
-        width: 24px;
-        height: 24px;
-        font-size: 12px;
+        width: 28px;
+        height: 28px;
     }
     
     .opponent-name {
-        font-size: 11px;
+        font-size: 13px;
     }
     
     .opponent-score .score-value {
-        font-size: 12px;
-    }
-    
-    .opponent-board {
-        display: none !important;
+        font-size: 16px;
     }
     
     .board-container.opponent-board {
@@ -1235,65 +1223,62 @@ body {
         display: none;
     }
     
-    /* Powers section - compact inline */
+    /* Powers section - compact */
     .powers-section {
-        padding: 4px 6px;
+        padding: 6px;
         flex-shrink: 0;
     }
     
     .points-row {
         flex-direction: row;
-        gap: 4px;
-        margin-bottom: 4px;
+        gap: 6px;
+        margin-bottom: 6px;
     }
     
     .points-display {
-        padding: 4px 8px;
-        flex: 0 0 auto;
+        padding: 6px 10px;
     }
     
     .points-icon {
-        font-size: 14px;
+        font-size: 16px;
     }
     
     .points-label {
-        font-size: 9px;
+        font-size: 10px;
     }
     
     .points-value {
-        font-size: 16px;
+        font-size: 20px;
     }
     
     .power-notification {
         flex: 1;
-        min-height: 28px;
-        font-size: 10px;
-        padding: 4px 6px;
+        min-height: 32px;
+        font-size: 11px;
+        padding: 6px 8px;
     }
     
     .power-buttons {
-        gap: 4px;
+        gap: 6px;
     }
     
     .power-btn {
-        padding: 4px 2px;
-        min-width: 0;
-        flex: 1;
+        padding: 6px 4px;
     }
     
     .power-btn .power-icon {
-        font-size: 14px;
+        font-size: 16px;
     }
     
     .power-btn .power-name {
-        font-size: 8px;
+        font-size: 9px;
     }
     
     .power-btn .power-cost {
-        font-size: 7px;
+        font-size: 8px;
     }
     
-    /* Player section - maximize */
+    /* Player section - MAXIMIZE */
     .player-section {
         padding: 4px;
         flex: 1;
@@ -1304,23 +1289,22 @@ body {
     }
     
     .player-info {
-        padding: 4px 8px;
-        margin-bottom: 2px;
+        padding: 6px 8px;
+        margin-bottom: 4px;
         flex-shrink: 0;
     }
     
     .player-avatar {
-        width: 24px;
-        height: 24px;
-        font-size: 12px;
+        width: 28px;
+        height: 28px;
     }
     
     .player-name-label {
-        font-size: 11px;
+        font-size: 13px;
     }
     
     .player-score .score-value {
-        font-size: 12px;
+        font-size: 16px;
     }
     
     .board-container.player-board {
@@ -1329,103 +1313,157 @@ body {
         align-items: center;
         justify-content: center;
         min-height: 0;
-        position: relative;
+        padding: 4px;
     }
     
-    .player-board canvas {
-        max-width: 100%;
-        max-height: 100%;
-        width: auto !important;
+    #player-canvas {
+        width: 100% !important;
         height: auto !important;
-        object-fit: contain;
+        max-width: calc(100dvh - 280px);
+        max-height: calc(100dvh - 280px);
+        aspect-ratio: 1;
     }
     
     /* Top nav compact */
     .top-nav {
-        padding: 4px 8px;
-        flex-shrink: 0;
-        height: 44px;
+        padding: 6px 10px;
+        height: 40px;
     }
     
     .nav-logo {
-        font-size: 11px !important;
+        font-size: 12px !important;
     }
     
     .nav-timer {
-        font-size: 11px !important;
-        padding: 3px 6px !important;
+        font-size: 12px !important;
+        padding: 4px 8px !important;
     }
     
     .nav-btn {
-        padding: 3px 6px;
-        font-size: 9px;
+        padding: 4px 8px;
+        font-size: 10px;
     }
     
     /* Mobile action menu */
     .mobile-action-menu {
-        bottom: 8px;
-        padding: 6px 10px;
-        gap: 6px;
-    }
-    
-    .mobile-action-btn {
-        padding: 6px 12px;
-    }
-    
-    .mobile-action-btn span:first-child {
-        font-size: 16px;
-    }
-    
-    .mobile-action-btn span:last-child {
-        font-size: 10px;
+        bottom: 10px;
     }
 }
 
-/* Small phones */
-@media (max-width: 380px) {
-    .points-value {
-        font-size: 16px;
+/* Tablets - Portrait & Small Laptops (481px - 768px) */
+@media (min-width: 481px) and (max-width: 768px) {
+    #app {
+        max-width: 100%;
     }
     
-    .points-label {
-        font-size: 9px;
+    .game-layout {
+        padding: 8px;
+        gap: 8px;
+    }
+    
+    /* Show opponent board but smaller */
+    .opponent-board canvas {
+        max-height: 120px;
+        max-width: 120px;
+    }
+    
+    .power-btn {
+        padding: 10px 8px;
+    }
+    
+    /* Larger player board */
+    #player-canvas {
+        max-width: 400px;
+        max-height: 400px;
+    }
+}
+
+/* Tablets - Landscape & Large Tablets (769px - 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+    #app {
+        max-width: 600px;
+    }
+    
+    .game-layout {
+        padding: 10px;
+        gap: 10px;
+    }
+    
+    .opponent-board canvas {
+        max-height: 160px;
+        max-width: 160px;
+    }
+    
+    #player-canvas {
+        max-width: 450px;
+        max-height: 450px;
+    }
+}
+
+/* Desktop (1025px+) - Default styles apply */
+
+/* Touch device specific - action menu visibility */
+@media (pointer: coarse) {
+    .mobile-action-menu {
+        /* Show on touch devices */
+    }
+}
+
+@media (pointer: fine) {
+    .mobile-action-menu {
+        display: none !important;
+    }
+}
+
+/* Small phones (max-width: 380px) */
+@media (max-width: 380px) {
+    .points-value {
+        font-size: 18px;
     }
     
     .power-btn .power-icon {
-        font-size: 12px;
+        font-size: 14px;
     }
     
-    .power-btn .power-name {
-        font-size: 8px;
-    }
-    
-    .power-btn .power-cost {
-        font-size: 7px;
+    #player-canvas {
+        max-width: calc(100dvh - 260px);
+        max-height: calc(100dvh - 260px);
     }
 }
 
 /* Landscape mode on mobile */
 @media (max-height: 500px) and (orientation: landscape) {
+    .board-container.opponent-board {
+        display: none !important;
+    }
+    
     .game-layout {
         flex-direction: row;
         flex-wrap: wrap;
+        gap: 8px;
     }
     
     .opponent-section {
-        width: 30%;
+        width: 100%;
+        order: 1;
     }
     
     .powers-section {
-        width: 100%;
-        order: 3;
+        width: 30%;
+        order: 2;
     }
     
     .player-section {
         width: 65%;
+        order: 3;
     }
     
-    .opponent-board canvas {
-        max-height: 150px;
+    #player-canvas {
+        max-height: calc(100dvh - 100px);
+    }
+}
+    #player-canvas {
+        max-height: calc(100dvh - 100px);
     }
 }
 
