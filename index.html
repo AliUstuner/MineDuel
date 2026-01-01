@@ -9,22 +9,21 @@
 </head>
 <body>
     <div id="app">
-        <!-- Top Navigation Bar -->
-        <nav id="top-nav" class="top-nav">
-            <div class="nav-left">
-                <span class="nav-logo">💣 MineDuel</span>
-                <span id="nav-timer" class="nav-timer hidden">⏱️ 02:30</span>
-            </div>
-            <div class="nav-right">
-                <button class="nav-btn" onclick="leaderboardManager.showModal()">🏆 Sıralama</button>
-                <div id="user-section">
-                    <button class="btn-primary" onclick="authManager.showModal()">Giriş Yap</button>
-                </div>
-            </div>
-        </nav>
-
         <!-- Main Menu Screen -->
         <div id="menu-screen" class="screen active">
+            <!-- Top Navigation Bar - Only visible in menu -->
+            <nav id="top-nav" class="top-nav">
+                <div class="nav-left">
+                    <span class="nav-logo">💣 MineDuel</span>
+                </div>
+                <div class="nav-right">
+                    <button class="nav-btn" onclick="leaderboardManager.showModal()">🏆 Sıralama</button>
+                    <div id="user-section">
+                        <button class="btn-primary" onclick="authManager.showModal()">Giriş Yap</button>
+                    </div>
+                </div>
+            </nav>
+            
             <div class="menu-container">
                 <div class="logo-container">
                     <h1 class="game-logo">

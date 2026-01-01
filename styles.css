@@ -1566,29 +1566,28 @@ body {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 15px;
+    padding: 12px 20px;
     background: var(--card);
-    border-bottom: 1px solid var(--border);
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .nav-left {
     display: flex;
     align-items: center;
-    gap: 15px;
 }
 
 .nav-left .nav-logo {
     font-family: 'Orbitron', sans-serif;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 700;
     color: var(--primary);
-    white-space: nowrap;
 }
 
 .nav-right {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
 }
 }
 
