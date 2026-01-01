@@ -951,7 +951,7 @@ body {
 /* ==================== NOTIFICATIONS ==================== */
 #notifications {
     position: fixed;
-    top: 55px;
+    top: 60px;
     right: 20px;
     z-index: 1001;
     display: flex;
