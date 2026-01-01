@@ -1606,9 +1606,12 @@ class AuthManager {
 
     async signInWithGoogle() {
         try {
-            await SupabaseClient.signInWithGoogle();
+            console.log('Google login starting...');
+            const result = await SupabaseClient.signInWithGoogle();
+            console.log('Google login result:', result);
         } catch (error) {
-            this.game.showNotification('Google girişi başarısız', 'error');
+            console.error('Google login error:', error);
+            this.game.showNotification('Google girişi başarısız: ' + error.message, 'error');
         }
     }
 

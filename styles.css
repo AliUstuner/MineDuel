@@ -1556,13 +1556,14 @@ body {
 /* ==================== TOP NAVIGATION ==================== */
 .top-nav {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    padding: 10px 15px;
-    background: var(--card);
-    border-bottom: 1px solid var(--border);
-    position: sticky;
+    padding: 8px 15px;
+    background: transparent;
+    position: absolute;
     top: 0;
+    left: 0;
+    right: 0;
     z-index: 100;
 }
 
