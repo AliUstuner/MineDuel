@@ -59,10 +59,14 @@ export async function signIn(email, password) {
 }
 
 export async function signInWithGoogle() {
+    // Use current origin for redirect (works for both localhost and production)
+    const redirectUrl = window.location.origin;
+    console.log('Google OAuth redirect URL:', redirectUrl);
+    
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-            redirectTo: window.location.origin
+            redirectTo: redirectUrl
         }
     });
     if (error) throw error;
