@@ -1566,14 +1566,15 @@ body {
     flex-direction: row !important;
     justify-content: space-between !important;
     align-items: center !important;
-    padding: 10px 15px;
-    background: rgba(21, 21, 48, 0.9);
-    position: absolute;
+    padding: 10px 20px;
+    background: rgba(21, 21, 48, 0.95);
+    position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    z-index: 100;
-    flex-wrap: nowrap !important;
+    width: 100%;
+    z-index: 1000;
+    box-sizing: border-box;
 }
 
 .nav-left {
@@ -1594,6 +1595,11 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+/* Add padding to body for fixed nav */
+#app {
+    padding-top: 50px;
 }
 }
 
