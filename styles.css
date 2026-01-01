@@ -1293,8 +1293,8 @@ body {
     #player-canvas {
         width: auto !important;
         height: auto !important;
-        max-width: calc(100vw - 40px);
-        max-height: calc(100dvh - 380px);
+        max-width: calc(100vw - 60px);
+        max-height: calc(100dvh - 480px);
         aspect-ratio: 1;
         object-fit: contain;
     }
@@ -1518,8 +1518,8 @@ body {
     }
     
     #player-canvas {
-        max-width: calc(100vw - 30px);
-        max-height: calc(100dvh - 350px);
+        max-width: calc(100vw - 50px);
+        max-height: calc(100dvh - 450px);
     }
 }
 
