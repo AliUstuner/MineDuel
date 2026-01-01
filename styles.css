@@ -1562,19 +1562,21 @@ body {
 
 /* ==================== TOP NAVIGATION ==================== */
 .top-nav {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
     padding: 12px 20px;
     background: var(--card);
     width: 100%;
     box-sizing: border-box;
+    flex-shrink: 0;
 }
 
 .nav-left {
-    display: flex;
-    align-items: center;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
 }
 
 .nav-left .nav-logo {
@@ -1585,8 +1587,9 @@ body {
 }
 
 .nav-right {
-    display: flex;
-    align-items: center;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
     gap: 12px;
 }
 }
