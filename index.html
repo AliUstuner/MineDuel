@@ -296,6 +296,53 @@
             </div>
         </div>
 
+        <!-- Profile Modal -->
+        <div id="profile-modal" class="modal hidden">
+            <div class="modal-backdrop" onclick="profileManager.hideModal()"></div>
+            <div class="modal-content profile-modal-content">
+                <button class="modal-close" onclick="profileManager.hideModal()">✕</button>
+                <h2 class="modal-title">👤 Profilim</h2>
+                
+                <div class="profile-header">
+                    <div class="profile-avatar" id="profile-avatar">👤</div>
+                    <div class="profile-info">
+                        <h3 id="profile-username">Player</h3>
+                        <span id="profile-email" class="profile-email"></span>
+                    </div>
+                </div>
+                
+                <div class="profile-stats">
+                    <div class="profile-stat">
+                        <span class="stat-value" id="profile-rating">1000</span>
+                        <span class="stat-label">Rating</span>
+                    </div>
+                    <div class="profile-stat wins">
+                        <span class="stat-value" id="profile-wins">0</span>
+                        <span class="stat-label">Galibiyet</span>
+                    </div>
+                    <div class="profile-stat losses">
+                        <span class="stat-value" id="profile-losses">0</span>
+                        <span class="stat-label">Mağlubiyet</span>
+                    </div>
+                    <div class="profile-stat">
+                        <span class="stat-value" id="profile-total">0</span>
+                        <span class="stat-label">Toplam Maç</span>
+                    </div>
+                </div>
+                
+                <div class="match-history-section">
+                    <h3>📋 Maç Geçmişi</h3>
+                    <div id="match-history-list" class="match-history-list">
+                        <div class="match-history-loading">Yükleniyor...</div>
+                    </div>
+                </div>
+                
+                <button class="btn btn-secondary" onclick="authManager.logout()">
+                    🚪 Çıkış Yap
+                </button>
+            </div>
+        </div>
+
         <!-- Connection Status -->
         <div id="connection-status" class="hidden">
             <span class="status-dot"></span>

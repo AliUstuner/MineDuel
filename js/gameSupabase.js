@@ -528,7 +528,7 @@ class GameClient {
         
         if (this.user && this.profile) {
             userSection.innerHTML = `
-                <div class="user-info">
+                <div class="user-info" onclick="profileManager.showModal()" style="cursor:pointer;">
                     <span class="user-avatar">👤</span>
                     <span class="user-name">${this.profile.username}</span>
                 </div>
@@ -536,6 +536,10 @@ class GameClient {
             if (this.playerNameInput) {
                 this.playerNameInput.value = this.profile.username;
             }
+        } else {
+            userSection.innerHTML = `
+                <button class="btn-primary" onclick="authManager.showModal()">Giriş Yap</button>
+            `;
         }
     }
 
@@ -1620,12 +1624,118 @@ class AuthManager {
         this.hideModal();
     }
 
+    async logout() {
+        try {
+            await SupabaseClient.signOut();
+            this.game.user = null;
+            this.game.profile = null;
+            this.game.updateAuthUI();
+            this.game.showNotification('Çıkış yapıldı', 'info');
+            window.profileManager?.hideModal();
+        } catch (error) {
+            this.game.showNotification('Çıkış yapılamadı', 'error');
+        }
+    }
+
     showModal() {
         this.modal?.classList.remove('hidden');
     }
 
     hideModal() {
         this.modal?.classList.add('hidden');
+    }
+}
+
+// ==================== PROFILE MANAGER ====================
+class ProfileManager {
+    constructor(gameClient) {
+        this.game = gameClient;
+        this.modal = document.getElementById('profile-modal');
+    }
+
+    async showModal() {
+        if (!this.game.user) {
+            window.authManager?.showModal();
+            return;
+        }
+
+        this.modal?.classList.remove('hidden');
+        await this.loadProfile();
+        await this.loadMatchHistory();
+    }
+
+    hideModal() {
+        this.modal?.classList.add('hidden');
+    }
+
+    async loadProfile() {
+        const user = this.game.user;
+        const profile = this.game.profile;
+        
+        if (!user) return;
+
+        // Update profile info
+        document.getElementById('profile-username').textContent = profile?.username || user.email?.split('@')[0] || 'Player';
+        document.getElementById('profile-email').textContent = user.email || '';
+
+        // Load stats
+        try {
+            const stats = await SupabaseClient.getStats(user.id);
+            document.getElementById('profile-rating').textContent = stats?.rating || 1000;
+            document.getElementById('profile-wins').textContent = stats?.wins || 0;
+            document.getElementById('profile-losses').textContent = stats?.losses || 0;
+            document.getElementById('profile-total').textContent = stats?.total_games || 0;
+        } catch (error) {
+            console.error('Stats yüklenemedi:', error);
+        }
+    }
+
+    async loadMatchHistory() {
+        const list = document.getElementById('match-history-list');
+        if (!list || !this.game.user) return;
+
+        list.innerHTML = '<div class="match-history-loading">Yükleniyor...</div>';
+
+        try {
+            const history = await SupabaseClient.getGameHistory(this.game.user.id, 10);
+            
+            if (!history || history.length === 0) {
+                list.innerHTML = '<div class="match-history-empty">Henüz maç oynamadınız</div>';
+                return;
+            }
+
+            list.innerHTML = history.map(match => {
+                const isPlayer1 = match.player1_id === this.game.user.id;
+                const myScore = isPlayer1 ? match.player1_score : match.player2_score;
+                const opponentScore = isPlayer1 ? match.player2_score : match.player1_score;
+                const opponentName = isPlayer1 ? match.player2?.username : match.player1?.username;
+                
+                let result = 'draw';
+                let resultText = 'Berabere';
+                if (match.winner_id === this.game.user.id) {
+                    result = 'win';
+                    resultText = 'Galibiyet';
+                } else if (match.winner_id && match.winner_id !== this.game.user.id) {
+                    result = 'loss';
+                    resultText = 'Mağlubiyet';
+                }
+                
+                const date = new Date(match.created_at);
+                const dateStr = date.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' });
+                
+                return `
+                    <div class="match-history-item">
+                        <span class="match-result ${result}">${resultText}</span>
+                        <span class="match-opponent">vs ${opponentName || 'Unknown'}</span>
+                        <span class="match-score">${myScore} - ${opponentScore}</span>
+                        <span class="match-date">${dateStr}</span>
+                    </div>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Match history yüklenemedi:', error);
+            list.innerHTML = '<div class="match-history-empty">Yüklenemedi</div>';
+        }
     }
 }
 
@@ -1694,4 +1804,5 @@ document.addEventListener('DOMContentLoaded', () => {
     window.game = new GameClient();
     window.authManager = new AuthManager(window.game);
     window.leaderboardManager = new LeaderboardManager(window.game);
+    window.profileManager = new ProfileManager(window.game);
 });
