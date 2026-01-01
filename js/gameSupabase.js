@@ -1498,6 +1498,16 @@ class GameClient {
         this.matchmakingScreen?.classList.remove('active');
         this.gameScreen?.classList.remove('active');
         
+        // Show/hide top nav bar based on screen
+        const topNav = document.getElementById('top-nav');
+        if (topNav) {
+            if (name === 'menu') {
+                topNav.classList.remove('hidden');
+            } else {
+                topNav.classList.add('hidden');
+            }
+        }
+        
         switch (name) {
             case 'menu': this.menuScreen?.classList.add('active'); break;
             case 'matchmaking': this.matchmakingScreen?.classList.add('active'); break;

@@ -91,6 +91,7 @@ body {
     justify-content: center;
     align-items: center;
     padding: 20px;
+    padding-top: 70px; /* Space for fixed nav bar */
     background: radial-gradient(ellipse at center, var(--card) 0%, var(--darker) 100%);
 }
 
@@ -1555,17 +1556,18 @@ body {
         max-height: calc(100dvh - 100px);
     }
 }
-    #player-canvas {
-        max-height: calc(100dvh - 100px);
-    }
-}
 
 /* ==================== TOP NAVIGATION ==================== */
 .top-nav {
-    display: flex !important;
-    flex-direction: row !important;
-    justify-content: space-between !important;
-    align-items: center !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
     padding: 12px 20px;
     background: var(--card);
     width: 100%;
@@ -1573,10 +1575,15 @@ body {
     flex-shrink: 0;
 }
 
+/* Hide nav bar when not in menu */
+.top-nav.hidden {
+    display: none !important;
+}
+
 .nav-left {
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
 }
 
 .nav-left .nav-logo {
@@ -1587,11 +1594,10 @@ body {
 }
 
 .nav-right {
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
     gap: 12px;
-}
 }
 
 .nav-timer {
@@ -1618,12 +1624,6 @@ body {
 @keyframes timerPulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
-}
-
-.nav-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
 }
 
 .nav-btn {
