@@ -8,21 +8,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- Top Navigation Bar - Outside #app for full width -->
-    <nav id="top-nav" class="top-nav">
-        <div class="nav-left">
-            <span class="nav-logo">💣 MineDuel</span>
-            <span id="nav-timer" class="nav-timer hidden">⏱️ 02:30</span>
-        </div>
-        <div class="nav-right">
-            <button class="nav-btn" onclick="leaderboardManager.showModal()">🏆 Sıralama</button>
-            <div id="user-section">
-                <button class="btn-primary" onclick="authManager.showModal()">🔐 Giriş Yap</button>
-            </div>
-        </div>
-    </nav>
-
     <div id="app">
+        <!-- Top Navigation Bar -->
+        <nav id="top-nav" class="top-nav">
+            <div class="nav-left">
+                <span class="nav-logo">💣 MineDuel</span>
+                <span id="nav-timer" class="nav-timer hidden">⏱️ 02:30</span>
+            </div>
+            <div class="nav-right">
+                <button class="nav-btn" onclick="leaderboardManager.showModal()">🏆 Sıralama</button>
+                <div id="user-section">
+                    <button class="btn-primary" onclick="authManager.showModal()">Giriş Yap</button>
+                </div>
+            </div>
+        </nav>
 
         <!-- Main Menu Screen -->
         <div id="menu-screen" class="screen active">
