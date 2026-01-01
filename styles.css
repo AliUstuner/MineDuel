@@ -1382,12 +1382,14 @@ body {
     
     /* Top nav compact */
     .top-nav {
-        padding: 4px 8px;
-        height: 36px;
+        padding: 6px 10px;
+        min-height: 40px;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
     }
     
     .nav-logo {
-        font-size: 11px !important;
+        font-size: 12px !important;
     }
     
     .nav-timer {
@@ -1396,8 +1398,13 @@ body {
     }
     
     .nav-btn {
-        padding: 3px 6px;
-        font-size: 9px;
+        padding: 4px 8px;
+        font-size: 10px;
+    }
+    
+    #user-section .btn-primary {
+        padding: 4px 10px;
+        font-size: 10px;
     }
     
     /* Game header compact */
@@ -1555,9 +1562,10 @@ body {
 
 /* ==================== TOP NAVIGATION ==================== */
 .top-nav {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
     padding: 10px 15px;
     background: rgba(21, 21, 48, 0.9);
     position: absolute;
@@ -1565,19 +1573,28 @@ body {
     left: 0;
     right: 0;
     z-index: 100;
-}
-
-.nav-left .nav-logo {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--primary);
+    flex-wrap: nowrap !important;
 }
 
 .nav-left {
     display: flex;
     align-items: center;
     gap: 15px;
+}
+
+.nav-left .nav-logo {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--primary);
+    white-space: nowrap;
+}
+
+.nav-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
 }
 
 .nav-timer {
