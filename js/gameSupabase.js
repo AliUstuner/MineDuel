@@ -737,6 +737,15 @@ class GameClient {
         this.hasShield = false;
         this.isFrozen = false;
         
+        // Initialize power usage limits (max 3 uses per power per game)
+        this.powerUsesLeft = {
+            radar: 3,
+            safeburst: 3,
+            shield: 3,
+            freeze: 3
+        };
+        this.updatePowerButtonsUsage();
+        
         // Setup boards
         this.playerBoard?.setGridSize(gridSize);
         this.opponentBoard?.setGridSize(gridSize);
@@ -1158,10 +1167,20 @@ class GameClient {
     }
 
     usePower(power, cost) {
+        // Check if power uses left
+        if (!this.powerUsesLeft || this.powerUsesLeft[power] <= 0) {
+            this.showNotification(`${power.toUpperCase()} hakkın bitti!`, 'error');
+            return;
+        }
+        
         if (this.score < cost) {
             this.showNotification(`Need ${cost} points!`, 'error');
             return;
         }
+        
+        // Deduct power usage
+        this.powerUsesLeft[power]--;
+        this.updatePowerButtonsUsage();
         
         this.score -= cost;
         this.updateScore();
@@ -1489,7 +1508,42 @@ class GameClient {
     updatePowerButtons() {
         this.powerButtons.forEach(btn => {
             const cost = parseInt(btn.dataset.cost);
-            btn.disabled = this.score < cost;
+            const power = btn.dataset.power;
+            const usesLeft = this.powerUsesLeft?.[power] ?? 3;
+            
+            // Disable if not enough points OR no uses left
+            btn.disabled = this.score < cost || usesLeft <= 0;
+            
+            // Add visual indicator for uses left
+            if (usesLeft <= 0) {
+                btn.classList.add('power-exhausted');
+            } else {
+                btn.classList.remove('power-exhausted');
+            }
+        });
+    }
+    
+    updatePowerButtonsUsage() {
+        // Update the usage count display on each power button
+        this.powerButtons.forEach(btn => {
+            const power = btn.dataset.power;
+            const usesLeft = this.powerUsesLeft?.[power] ?? 3;
+            
+            // Find or create usage indicator
+            let usageIndicator = btn.querySelector('.power-uses');
+            if (!usageIndicator) {
+                usageIndicator = document.createElement('span');
+                usageIndicator.className = 'power-uses';
+                btn.appendChild(usageIndicator);
+            }
+            usageIndicator.textContent = `${usesLeft}/3`;
+            
+            // Update button state
+            if (usesLeft <= 0) {
+                btn.classList.add('power-exhausted');
+            } else {
+                btn.classList.remove('power-exhausted');
+            }
         });
     }
 
