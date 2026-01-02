@@ -592,8 +592,35 @@ class GameClient {
                 // No opponent found, join queue and start polling
                 await SupabaseClient.joinMatchmaking(odaUserId, playerName, difficulty);
                 
-                // Start polling for matches (faster: every 1 second)
+                // Start polling for matches (fast: every 500ms)
                 this.startMatchPolling(odaUserId, difficulty);
+                
+                // Also do an immediate second check after joining (in case someone just joined)
+                setTimeout(async () => {
+                    const quickCheck = await SupabaseClient.findMatch(difficulty, odaUserId);
+                    if (quickCheck && !this.gameId) {
+                        // Found someone! Stop polling and start game
+                        this.stopMatchPolling();
+                        this.isHost = true;
+                        this.opponentId = quickCheck.user_id;
+                        this.opponentName = quickCheck.username;
+                        
+                        const game = await SupabaseClient.createGame(odaUserId, quickCheck.user_id, difficulty, playerName, quickCheck.username);
+                        this.gameId = game.id;
+                        
+                        await SupabaseClient.updateMatchStatus(null, odaUserId, 'matched', game.id);
+                        await SupabaseClient.updateMatchStatus(null, quickCheck.user_id, 'matched', game.id);
+                        
+                        this.startGame({
+                            gameId: game.id,
+                            opponent: quickCheck.username,
+                            difficulty: difficulty,
+                            gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
+                            mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
+                            myName: playerName
+                        });
+                    }
+                }, 100);
             }
         } catch (error) {
             console.error('Matchmaking error:', error);
@@ -604,7 +631,7 @@ class GameClient {
     startMatchPolling(odaUserId, difficulty) {
         const playerName = this.pendingPlayerName || this.playerNameInput?.value || 'Player';
         
-        // Poll every 1 second for faster matching
+        // Poll every 500ms for faster matching
         this.matchPollingInterval = setInterval(async () => {
             try {
                 // Check if we got matched
@@ -692,7 +719,7 @@ class GameClient {
             } catch (e) {
                 console.error('Poll error:', e);
             }
-        }, 1000);
+        }, 500);
     }
 
     stopMatchPolling() {
