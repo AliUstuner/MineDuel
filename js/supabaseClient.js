@@ -6,6 +6,20 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Test connection on load
+(async () => {
+    try {
+        const { data, error } = await supabase.from('matchmaking_queue').select('count').limit(1);
+        if (error) {
+            console.error('[SUPABASE] Connection test FAILED:', error);
+        } else {
+            console.log('[SUPABASE] Connection OK');
+        }
+    } catch (e) {
+        console.error('[SUPABASE] Connection exception:', e);
+    }
+})();
+
 // ==================== AUTH ====================
 
 export async function signUp(email, password, username) {
@@ -178,6 +192,8 @@ export async function leaveMatchmaking(userId) {
 }
 
 export async function findMatch(difficulty, currentUserId) {
+    console.log('[SUPABASE] findMatch called:', { difficulty, currentUserId });
+    
     const { data, error } = await supabase
         .from('matchmaking_queue')
         .select('*')
@@ -187,7 +203,12 @@ export async function findMatch(difficulty, currentUserId) {
         .order('created_at', { ascending: true })
         .limit(1);
 
-    if (error) throw error;
+    console.log('[SUPABASE] findMatch result:', { data, error });
+    
+    if (error) {
+        console.error('[SUPABASE] findMatch error:', error);
+        throw error;
+    }
     return data?.[0] || null;
 }
 
