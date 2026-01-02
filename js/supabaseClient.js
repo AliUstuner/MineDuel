@@ -139,11 +139,14 @@ export async function getStats(userId) {
 // ==================== MATCHMAKING ====================
 
 export async function joinMatchmaking(userId, username, difficulty, rating = 1000) {
+    console.log('[SUPABASE] joinMatchmaking called:', { userId, username, difficulty });
+    
     // Remove any existing queue entry
-    await supabase
+    const deleteResult = await supabase
         .from('matchmaking_queue')
         .delete()
         .eq('user_id', userId);
+    console.log('[SUPABASE] Delete old entry result:', deleteResult);
 
     // Add to queue
     const { data, error } = await supabase
@@ -158,7 +161,11 @@ export async function joinMatchmaking(userId, username, difficulty, rating = 100
         .select()
         .single();
 
-    if (error) throw error;
+    console.log('[SUPABASE] Insert result:', { data, error });
+    if (error) {
+        console.error('[SUPABASE] Insert error:', error);
+        throw error;
+    }
     return data;
 }
 

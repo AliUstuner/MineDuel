@@ -601,6 +601,8 @@ class GameClient {
         const odaUserId = this.user?.id || 'guest_' + Math.random().toString(36).substr(2, 9);
         this.odaUserId = odaUserId;
         
+        console.log('[MATCHMAKING] Starting search...', { odaUserId, playerName, difficulty });
+        
         this.showScreen('matchmaking');
         this.startSearchTimer();
         
@@ -610,16 +612,20 @@ class GameClient {
         
         try {
             // Try to find existing player waiting
+            console.log('[MATCHMAKING] Looking for opponent...');
             const opponent = await SupabaseClient.findMatch(difficulty, odaUserId);
+            console.log('[MATCHMAKING] findMatch result:', opponent);
             
             if (opponent) {
                 // Found opponent! Start game as host
+                console.log('[MATCHMAKING] Found opponent!', opponent);
                 this.isHost = true;
                 this.opponentId = opponent.user_id;
                 this.opponentName = opponent.username;
                 
                 // Create game with player names stored
                 const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, difficulty, playerName, opponent.username);
+                console.log('[MATCHMAKING] Game created:', game);
                 this.gameId = game.id;
                 
                 // Update both players' queue status
@@ -637,7 +643,9 @@ class GameClient {
                 });
             } else {
                 // No opponent found, join queue and start polling
-                await SupabaseClient.joinMatchmaking(odaUserId, playerName, difficulty);
+                console.log('[MATCHMAKING] No opponent, joining queue...');
+                const queueResult = await SupabaseClient.joinMatchmaking(odaUserId, playerName, difficulty);
+                console.log('[MATCHMAKING] Joined queue:', queueResult);
                 
                 // Start polling for matches (fast: every 500ms)
                 this.startMatchPolling(odaUserId, difficulty);
@@ -645,6 +653,7 @@ class GameClient {
                 // Also do an immediate second check after joining (in case someone just joined)
                 setTimeout(async () => {
                     const quickCheck = await SupabaseClient.findMatch(difficulty, odaUserId);
+                    console.log('[MATCHMAKING] Quick check result:', quickCheck);
                     if (quickCheck && !this.gameId) {
                         // Found someone! Stop polling and start game
                         this.stopMatchPolling();
