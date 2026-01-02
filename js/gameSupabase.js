@@ -531,49 +531,60 @@ class GameClient {
 
     updateAuthUI() {
         const userSection = document.getElementById('user-section');
+        const playerNameInputWrapper = document.querySelector('.player-name-input');
+        
         if (!userSection) return;
         
         if (this.user && this.profile) {
+            // Logged in - show profile button
             userSection.innerHTML = `
                 <div class="user-info" onclick="profileManager.showModal()" style="cursor:pointer;">
                     <span class="user-avatar">👤</span>
                     <span class="user-name">${this.profile.username}</span>
                 </div>
             `;
+            
+            // Lock the name input - logged in users change name from profile
             if (this.playerNameInput) {
                 this.playerNameInput.value = this.profile.username;
+                this.playerNameInput.readOnly = true;
+            }
+            if (playerNameInputWrapper) {
+                playerNameInputWrapper.classList.add('locked');
             }
         } else {
+            // Guest - show login button
             userSection.innerHTML = `
                 <button class="btn-primary" onclick="authManager.showModal()">Giriş Yap</button>
             `;
+            
+            // Unlock name input for guests
+            if (this.playerNameInput) {
+                this.playerNameInput.readOnly = false;
+            }
+            if (playerNameInputWrapper) {
+                playerNameInputWrapper.classList.remove('locked');
+            }
         }
     }
     
     async savePlayerName() {
+        // Only save for guests - logged in users use profile modal
+        if (this.user) return;
+        
         const newName = this.playerNameInput?.value?.trim();
         if (!newName || newName.length < 2) return;
         
         // Save to localStorage for guests
         localStorage.setItem('mineduel_player_name', newName);
-        
-        // Save to database for logged-in users
-        if (this.user && this.profile) {
-            try {
-                await SupabaseClient.updateProfile(this.user.id, { username: newName });
-                this.profile.username = newName;
-                this.updateAuthUI();
-                console.log('Player name saved:', newName);
-            } catch (e) {
-                console.error('Failed to save name:', e);
-            }
-        }
     }
     
     loadSavedPlayerName() {
-        // Load from localStorage for guests
+        // Load from localStorage for guests only
+        if (this.user) return;
+        
         const savedName = localStorage.getItem('mineduel_player_name');
-        if (savedName && this.playerNameInput && !this.user) {
+        if (savedName && this.playerNameInput) {
             this.playerNameInput.value = savedName;
         }
     }
@@ -1850,20 +1861,53 @@ class AuthManager {
         try {
             // Try to get existing profile from database
             this.game.profile = await SupabaseClient.getProfile(user.id);
+            // Profile exists - user has logged in before
+            this.game.updateAuthUI();
+            this.hideModal();
         } catch (e) {
-            // Profile doesn't exist - create one with Google name
-            const defaultName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Player';
-            try {
-                // Create profile in database
-                await SupabaseClient.createProfile(user.id, user.email, defaultName);
-                this.game.profile = { id: user.id, username: defaultName, email: user.email };
-            } catch (createError) {
-                console.error('Failed to create profile:', createError);
-                this.game.profile = { username: defaultName };
-            }
+            // Profile doesn't exist - this is first login, show name modal
+            this.pendingUser = user;
+            this.showFirstLoginModal(user);
         }
-        this.game.updateAuthUI();
-        this.hideModal();
+    }
+    
+    showFirstLoginModal(user) {
+        const modal = document.getElementById('first-login-modal');
+        const nameInput = document.getElementById('first-login-name');
+        
+        // Suggest name from Google
+        const suggestedName = user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || '';
+        if (nameInput) nameInput.value = suggestedName;
+        
+        modal?.classList.remove('hidden');
+        nameInput?.focus();
+    }
+    
+    async confirmFirstLoginName() {
+        const nameInput = document.getElementById('first-login-name');
+        const name = nameInput?.value?.trim();
+        
+        if (!name || name.length < 2) {
+            this.game.showNotification('İsim en az 2 karakter olmalı!', 'error');
+            return;
+        }
+        
+        const user = this.pendingUser;
+        if (!user) return;
+        
+        try {
+            // Create profile with chosen name
+            await SupabaseClient.createProfile(user.id, user.email, name);
+            this.game.profile = { id: user.id, username: name, email: user.email };
+            this.game.user = user;
+            this.game.updateAuthUI();
+            
+            document.getElementById('first-login-modal')?.classList.add('hidden');
+            this.game.showNotification(`Hoş geldin, ${name}!`, 'success');
+        } catch (createError) {
+            console.error('Failed to create profile:', createError);
+            this.game.showNotification('Profil oluşturulamadı', 'error');
+        }
     }
 
     async logout() {
@@ -1909,6 +1953,26 @@ class ProfileManager {
     hideModal() {
         this.modal?.classList.add('hidden');
     }
+    
+    async saveName() {
+        const nameInput = document.getElementById('profile-username-input');
+        const newName = nameInput?.value?.trim();
+        
+        if (!newName || newName.length < 2) {
+            this.game.showNotification('İsim en az 2 karakter olmalı!', 'error');
+            return;
+        }
+        
+        try {
+            await SupabaseClient.updateProfile(this.game.user.id, { username: newName });
+            this.game.profile.username = newName;
+            this.game.updateAuthUI();
+            this.game.showNotification('İsim güncellendi!', 'success');
+        } catch (e) {
+            console.error('İsim güncellenemedi:', e);
+            this.game.showNotification('İsim güncellenemedi', 'error');
+        }
+    }
 
     async loadProfile() {
         const user = this.game.user;
@@ -1916,8 +1980,11 @@ class ProfileManager {
         
         if (!user) return;
 
-        // Update profile info
-        document.getElementById('profile-username').textContent = profile?.username || user.email?.split('@')[0] || 'Player';
+        // Update profile info with editable input
+        const usernameInput = document.getElementById('profile-username-input');
+        if (usernameInput) {
+            usernameInput.value = profile?.username || user.email?.split('@')[0] || 'Player';
+        }
         document.getElementById('profile-email').textContent = user.email || '';
 
         // Load stats

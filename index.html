@@ -277,6 +277,22 @@
             </div>
         </div>
 
+        <!-- First Login Name Modal -->
+        <div id="first-login-modal" class="modal hidden">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content first-login-content">
+                <h2 class="modal-title">🎮 Hoş Geldin!</h2>
+                <p class="modal-subtitle">Oyunda kullanmak istediğin ismi seç:</p>
+                
+                <div class="first-login-form">
+                    <input type="text" id="first-login-name" class="first-login-input" maxlength="15" placeholder="İsmini gir...">
+                    <button class="btn btn-primary btn-large" onclick="authManager.confirmFirstLoginName()">
+                        🚀 Oyuna Başla
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Leaderboard Modal -->
         <div id="leaderboard-modal" class="modal hidden">
             <div class="modal-backdrop" onclick="leaderboardManager.hideModal()"></div>
@@ -305,7 +321,10 @@
                 <div class="profile-header">
                     <div class="profile-avatar" id="profile-avatar">👤</div>
                     <div class="profile-info">
-                        <h3 id="profile-username">Player</h3>
+                        <div class="profile-name-edit">
+                            <input type="text" id="profile-username-input" class="profile-name-input" maxlength="15" placeholder="İsim">
+                            <button class="btn-save-name" onclick="profileManager.saveName()">💾</button>
+                        </div>
                         <span id="profile-email" class="profile-email"></span>
                     </div>
                 </div>

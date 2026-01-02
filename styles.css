@@ -2568,3 +2568,92 @@ body {
     padding: 30px;
     color: var(--text-muted);
 }
+
+/* First Login Modal */
+.first-login-content {
+    text-align: center;
+    padding: 40px 30px;
+}
+
+.first-login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 25px;
+}
+
+.first-login-input {
+    width: 100%;
+    padding: 15px 20px;
+    font-size: 18px;
+    text-align: center;
+    background: var(--card);
+    border: 2px solid var(--primary);
+    border-radius: 10px;
+    color: var(--text);
+    outline: none;
+}
+
+.first-login-input:focus {
+    box-shadow: var(--glow);
+}
+
+.btn-large {
+    padding: 15px 30px;
+    font-size: 18px;
+}
+
+/* Profile Name Edit */
+.profile-name-edit {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.profile-name-input {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-size: 18px;
+    font-weight: 600;
+    width: 150px;
+}
+
+.profile-name-input:focus {
+    border-color: var(--primary);
+    outline: none;
+}
+
+.btn-save-name {
+    background: var(--primary);
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.btn-save-name:hover {
+    transform: scale(1.1);
+}
+
+/* Locked name for logged-in users */
+.player-name-input.locked {
+    opacity: 0.7;
+}
+
+.player-name-input.locked input {
+    pointer-events: none;
+    background: var(--card);
+}
+
+.player-name-input.locked::after {
+    content: '🔒';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+}
