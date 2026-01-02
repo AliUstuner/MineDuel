@@ -98,13 +98,14 @@ export async function getProfile(userId) {
 }
 
 export async function createProfile(userId, email, username) {
+    // Use upsert to handle both create and update
     const { data, error } = await supabase
         .from('profiles')
-        .insert({
+        .upsert({
             id: userId,
             email: email,
             username: username
-        })
+        }, { onConflict: 'id' })
         .select()
         .single();
     if (error) throw error;
@@ -112,10 +113,13 @@ export async function createProfile(userId, email, username) {
 }
 
 export async function updateProfile(userId, updates) {
+    // First try upsert in case profile doesn't exist
     const { data, error } = await supabase
         .from('profiles')
-        .update(updates)
-        .eq('id', userId)
+        .upsert({
+            id: userId,
+            ...updates
+        }, { onConflict: 'id' })
         .select()
         .single();
     if (error) throw error;
