@@ -50,11 +50,11 @@ CREATE TABLE IF NOT EXISTS games (
     completed_at TIMESTAMP WITH TIME ZONE
 );
 
--- Matchmaking queue table
+-- Matchmaking queue table (supports both registered and guest users)
 CREATE TABLE IF NOT EXISTS matchmaking_queue (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    user_id UUID REFERENCES profiles(id) ON DELETE CASCADE UNIQUE NOT NULL,
-    username VARCHAR(20) NOT NULL,
+    user_id TEXT UNIQUE NOT NULL,
+    username VARCHAR(50) NOT NULL,
     avatar_url TEXT,
     rating INTEGER DEFAULT 1000,
     difficulty VARCHAR(10) NOT NULL CHECK (difficulty IN ('easy', 'medium', 'hard')),
