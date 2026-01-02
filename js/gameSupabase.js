@@ -411,6 +411,10 @@ class GameClient {
         
         // Menu elements
         this.playerNameInput = document.getElementById('player-name');
+        
+        // Save name when changed (for logged-in users)
+        this.playerNameInput?.addEventListener('blur', () => this.savePlayerName());
+        this.playerNameInput?.addEventListener('change', () => this.savePlayerName());
         this.findGameBtn = document.getElementById('find-game-btn');
         this.cancelSearchBtn = document.getElementById('cancel-search-btn');
         this.searchTimeDisplay = document.getElementById('search-time');
@@ -450,7 +454,10 @@ class GameClient {
             this.opponentBoard = new BoardRenderer(opponentCanvas, true);
         }
         
-        // Random name if empty
+        // Load saved name first (for guests)
+        this.loadSavedPlayerName();
+        
+        // Random name if still empty
         if (this.playerNameInput && !this.playerNameInput.value) {
             this.playerNameInput.value = 'Player' + Math.floor(Math.random() * 9999);
         }
@@ -540,6 +547,34 @@ class GameClient {
             userSection.innerHTML = `
                 <button class="btn-primary" onclick="authManager.showModal()">Giriş Yap</button>
             `;
+        }
+    }
+    
+    async savePlayerName() {
+        const newName = this.playerNameInput?.value?.trim();
+        if (!newName || newName.length < 2) return;
+        
+        // Save to localStorage for guests
+        localStorage.setItem('mineduel_player_name', newName);
+        
+        // Save to database for logged-in users
+        if (this.user && this.profile) {
+            try {
+                await SupabaseClient.updateProfile(this.user.id, { username: newName });
+                this.profile.username = newName;
+                this.updateAuthUI();
+                console.log('Player name saved:', newName);
+            } catch (e) {
+                console.error('Failed to save name:', e);
+            }
+        }
+    }
+    
+    loadSavedPlayerName() {
+        // Load from localStorage for guests
+        const savedName = localStorage.getItem('mineduel_player_name');
+        if (savedName && this.playerNameInput && !this.user) {
+            this.playerNameInput.value = savedName;
         }
     }
 
