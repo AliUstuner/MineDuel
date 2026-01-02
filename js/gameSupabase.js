@@ -547,8 +547,12 @@ class GameClient {
         const playerName = this.playerNameInput?.value || 'Player' + Math.floor(Math.random() * 9999);
         const difficulty = this.selectedDifficulty;
         
+        // Save player name for later use
+        this.pendingPlayerName = playerName;
+        
         // Create a temporary user ID if not logged in
         const odaUserId = this.user?.id || 'guest_' + Math.random().toString(36).substr(2, 9);
+        this.odaUserId = odaUserId;
         
         this.showScreen('matchmaking');
         this.startSearchTimer();
@@ -562,33 +566,33 @@ class GameClient {
             const opponent = await SupabaseClient.findMatch(difficulty, odaUserId);
             
             if (opponent) {
-                // Found opponent! Start game
-                this.isHost = false;
+                // Found opponent! Start game as host
+                this.isHost = true;
                 this.opponentId = opponent.user_id;
                 this.opponentName = opponent.username;
                 
                 // Create game
-                const game = await SupabaseClient.createGame(opponent.user_id, odaUserId, difficulty);
+                const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, difficulty);
                 this.gameId = game.id;
                 
-                // Update queue status
+                // Update both players' queue status
+                await SupabaseClient.updateMatchStatus(null, odaUserId, 'matched', game.id);
                 await SupabaseClient.updateMatchStatus(null, opponent.user_id, 'matched', game.id);
                 
-                // Start the game
+                // Start the game with explicit player names
                 this.startGame({
                     gameId: game.id,
                     opponent: opponent.username,
                     difficulty: difficulty,
                     gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
-                    mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount
+                    mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
+                    myName: playerName
                 });
             } else {
                 // No opponent found, join queue and start polling
-                this.odaUserId = odaUserId;
-                this.pendingPlayerName = playerName;
                 await SupabaseClient.joinMatchmaking(odaUserId, playerName, difficulty);
                 
-                // Start polling for matches (more reliable than realtime for matchmaking)
+                // Start polling for matches (faster: every 1 second)
                 this.startMatchPolling(odaUserId, difficulty);
             }
         } catch (error) {
@@ -598,7 +602,9 @@ class GameClient {
     }
 
     startMatchPolling(odaUserId, difficulty) {
-        // Poll every 2 seconds for match status or new opponents
+        const playerName = this.pendingPlayerName || this.playerNameInput?.value || 'Player';
+        
+        // Poll every 1 second for faster matching
         this.matchPollingInterval = setInterval(async () => {
             try {
                 // Check if we got matched
@@ -610,18 +616,20 @@ class GameClient {
                     this.gameId = myStatus.match_id;
                     this.isHost = false;
                     
-                    // Try multiple ways to get opponent name
+                    // Get opponent name from game info
                     let opponentName = 'Rakip';
                     
-                    // Method 1: Try queue
-                    const opponentInfo = await SupabaseClient.getOpponentFromQueue(myStatus.match_id, odaUserId);
-                    if (opponentInfo?.username) {
-                        opponentName = opponentInfo.username;
-                    } else {
-                        // Method 2: Try getting from all queue entries with same difficulty
-                        const allWaiting = await SupabaseClient.findAllInQueue(difficulty, odaUserId);
-                        if (allWaiting && allWaiting.length > 0) {
-                            opponentName = allWaiting[0].username;
+                    // Try to get game info for opponent name
+                    const gameInfo = await SupabaseClient.getGameInfo(myStatus.match_id);
+                    if (gameInfo) {
+                        // Determine which player is opponent
+                        const isPlayer1 = gameInfo.player1_id === odaUserId;
+                        const opponentId = isPlayer1 ? gameInfo.player2_id : gameInfo.player1_id;
+                        
+                        // Try to get opponent from queue
+                        const opponentInfo = await SupabaseClient.getOpponentFromQueue(myStatus.match_id, odaUserId);
+                        if (opponentInfo?.username) {
+                            opponentName = opponentInfo.username;
                         }
                     }
                     
@@ -630,7 +638,8 @@ class GameClient {
                         opponent: opponentName,
                         difficulty: difficulty,
                         gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
-                        mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount
+                        mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
+                        myName: playerName
                     });
                     return;
                 }
@@ -659,13 +668,14 @@ class GameClient {
                         opponent: opponent.username,
                         difficulty: difficulty,
                         gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
-                        mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount
+                        mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
+                        myName: playerName
                     });
                 }
             } catch (e) {
                 console.error('Poll error:', e);
             }
-        }, 2000);
+        }, 1000);
     }
 
     stopMatchPolling() {
@@ -724,6 +734,7 @@ class GameClient {
     startGame(config) {
         this.gameId = config.gameId;
         this.opponentName = config.opponent;
+        this.myName = config.myName || this.playerNameInput?.value || 'Player';
         this.matchDuration = CONFIG.MATCH_DURATION;
         this.matchStartTime = Date.now();
         this.minesGenerated = false;
@@ -753,9 +764,8 @@ class GameClient {
         // Store mine count for later generation
         this.pendingMineCount = mineCount;
         
-        // Update UI
-        const playerName = this.playerNameInput?.value || 'Player';
-        if (this.playerNameDisplay) this.playerNameDisplay.textContent = playerName;
+        // Update UI - use saved myName for player display
+        if (this.playerNameDisplay) this.playerNameDisplay.textContent = this.myName;
         if (this.opponentNameDisplay) this.opponentNameDisplay.textContent = this.opponentName;
         this.updateScore();
         this.updatePowerButtons();
@@ -772,7 +782,7 @@ class GameClient {
             this.setupGameChannel();
         }
         
-        this.showNotification(`Game started vs ${this.opponentName}!`, 'success');
+        this.showNotification(`${this.opponentName} ile maç başladı!`, 'success');
         this.audio.playPower();
     }
 
