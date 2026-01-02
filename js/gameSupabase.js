@@ -764,6 +764,7 @@ class GameClient {
         this.opponentScore = 0;
         this.hasShield = false;
         this.isFrozen = false;
+        this.gameEnded = false;
         
         // Initialize power usage limits (max 3 uses per power per game)
         this.powerUsesLeft = {
@@ -821,7 +822,12 @@ class GameClient {
                 this.handleOpponentPower(payload.payload);
             })
             .on('broadcast', { event: 'gameEnd' }, (payload) => {
-                this.handleGameEnd(payload.payload);
+                // Receive opponent's final score
+                const data = payload.payload;
+                if (data.odaUserId !== this.odaUserId && data.myFinalScore !== undefined) {
+                    this.opponentScore = data.myFinalScore;
+                    this.updateScore();
+                }
             })
             .on('broadcast', { event: 'playerInfo' }, (payload) => {
                 // Receive opponent's name
@@ -1531,6 +1537,10 @@ class GameClient {
     }
 
     endGame(isWinner = null) {
+        // Prevent multiple endGame calls
+        if (this.gameEnded) return;
+        this.gameEnded = true;
+        
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
@@ -1540,45 +1550,45 @@ class GameClient {
         const navTimer = document.getElementById('nav-timer');
         if (navTimer) navTimer.classList.add('hidden');
         
-        // Determine winner by score if not specified
-        if (isWinner === null) {
-            isWinner = this.score > this.opponentScore;
-        }
-        const isDraw = this.score === this.opponentScore;
-        
-        // Broadcast game end
+        // Broadcast game end with my final score
         if (this.gameChannel) {
             this.gameChannel.send({
                 type: 'broadcast',
                 event: 'gameEnd',
-                payload: { winnerId: isWinner ? 'self' : 'opponent', score: this.score }
+                payload: { 
+                    odaUserId: this.odaUserId,
+                    myFinalScore: this.score
+                }
             });
         }
         
-        this.handleGameEnd({ isWinner, isDraw });
+        // Wait a bit to receive opponent's final score, then show result
+        setTimeout(() => {
+            this.showGameResult();
+        }, 500);
     }
-
-    handleGameEnd(data) {
-        const isWinner = data.isWinner !== false && (data.winnerId === 'self' || this.score > this.opponentScore);
-        const isDraw = data.isDraw || this.score === this.opponentScore;
+    
+    showGameResult() {
+        const isWinner = this.score > this.opponentScore;
+        const isDraw = this.score === this.opponentScore;
         
         if (isDraw) {
             this.resultIcon.textContent = '🤝';
-            this.resultTitle.textContent = 'Draw!';
+            this.resultTitle.textContent = 'Berabere!';
             this.resultTitle.className = 'result-title draw';
         } else if (isWinner) {
             this.resultIcon.textContent = '🏆';
-            this.resultTitle.textContent = 'Victory!';
+            this.resultTitle.textContent = 'Zafer!';
             this.resultTitle.className = 'result-title victory';
             this.audio.playVictory();
         } else {
             this.resultIcon.textContent = '💔';
-            this.resultTitle.textContent = 'Defeat';
+            this.resultTitle.textContent = 'Yenilgi';
             this.resultTitle.className = 'result-title defeat';
             this.audio.playDefeat();
         }
         
-        const playerName = this.playerNameInput?.value || 'Player';
+        const playerName = this.myName || this.playerNameInput?.value || 'Player';
         this.resultPlayerName.textContent = playerName;
         this.resultPlayerScore.textContent = this.score;
         this.resultOpponentName.textContent = this.opponentName;
