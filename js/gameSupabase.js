@@ -1848,10 +1848,19 @@ class AuthManager {
     async handleSignIn(user) {
         this.game.user = user;
         try {
+            // Try to get existing profile from database
             this.game.profile = await SupabaseClient.getProfile(user.id);
         } catch (e) {
-            // Create profile if not exists
-            this.game.profile = { username: user.email?.split('@')[0] || 'Player' };
+            // Profile doesn't exist - create one with Google name
+            const defaultName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Player';
+            try {
+                // Create profile in database
+                await SupabaseClient.createProfile(user.id, user.email, defaultName);
+                this.game.profile = { id: user.id, username: defaultName, email: user.email };
+            } catch (createError) {
+                console.error('Failed to create profile:', createError);
+                this.game.profile = { username: defaultName };
+            }
         }
         this.game.updateAuthUI();
         this.hideModal();

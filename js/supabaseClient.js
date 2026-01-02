@@ -97,6 +97,20 @@ export async function getProfile(userId) {
     return data;
 }
 
+export async function createProfile(userId, email, username) {
+    const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+            id: userId,
+            email: email,
+            username: username
+        })
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+}
+
 export async function updateProfile(userId, updates) {
     const { data, error } = await supabase
         .from('profiles')
