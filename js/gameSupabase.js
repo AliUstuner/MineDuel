@@ -806,7 +806,47 @@ class GameClient {
             .on('broadcast', { event: 'gameEnd' }, (payload) => {
                 this.handleGameEnd(payload.payload);
             })
-            .subscribe();
+            .on('broadcast', { event: 'playerInfo' }, (payload) => {
+                // Receive opponent's name
+                if (payload.payload && payload.payload.playerName) {
+                    const senderName = payload.payload.playerName;
+                    const senderId = payload.payload.odaUserId;
+                    
+                    // Only update if this is from opponent (not ourselves)
+                    if (senderId !== this.odaUserId) {
+                        this.opponentName = senderName;
+                        if (this.opponentNameDisplay) {
+                            this.opponentNameDisplay.textContent = senderName;
+                        }
+                        console.log('Received opponent name:', senderName);
+                    }
+                }
+            })
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    // Send our name to opponent
+                    setTimeout(() => {
+                        this.broadcastPlayerInfo();
+                    }, 500);
+                }
+            });
+    }
+    
+    broadcastPlayerInfo() {
+        if (!this.gameChannel || !this.gameId) return;
+        
+        const playerName = this.myName || this.pendingPlayerName || this.playerNameInput?.value || 'Player';
+        
+        this.gameChannel.send({
+            type: 'broadcast',
+            event: 'playerInfo',
+            payload: {
+                playerName: playerName,
+                odaUserId: this.odaUserId
+            }
+        });
+        
+        console.log('Sent player info:', playerName);
     }
 
     startGameTimer() {
