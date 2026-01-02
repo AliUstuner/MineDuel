@@ -288,12 +288,16 @@ export async function createGame(player1Id, player2Id, difficulty, player1Name =
         };
     }
     
+    console.log('[SUPABASE] createGame called with:', gameData);
+    
     const { data, error } = await supabase
         .from('games')
         .insert(gameData)
         .select()
         .single();
 
+    console.log('[SUPABASE] createGame result:', { data, error });
+    
     if (error) throw error;
     return data;
 }
