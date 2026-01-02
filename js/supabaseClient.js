@@ -213,17 +213,27 @@ export async function updateMatchStatus(odaId, odaUsers, odaStatus, matchId = nu
 
 // ==================== GAMES ====================
 
-export async function createGame(player1Id, player2Id, difficulty) {
+export async function createGame(player1Id, player2Id, difficulty, player1Name = null, player2Name = null) {
+    const gameData = {
+        player1_id: player1Id,
+        player2_id: player2Id,
+        difficulty,
+        status: 'in_progress',
+        player1_score: 0,
+        player2_score: 0
+    };
+    
+    // Add player names to board_state for storage (since we don't have separate columns)
+    if (player1Name || player2Name) {
+        gameData.board_state = {
+            player1_name: player1Name,
+            player2_name: player2Name
+        };
+    }
+    
     const { data, error } = await supabase
         .from('games')
-        .insert({
-            player1_id: player1Id,
-            player2_id: player2Id,
-            difficulty,
-            status: 'in_progress',
-            player1_score: 0,
-            player2_score: 0
-        })
+        .insert(gameData)
         .select()
         .single();
 

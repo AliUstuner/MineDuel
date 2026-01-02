@@ -571,8 +571,8 @@ class GameClient {
                 this.opponentId = opponent.user_id;
                 this.opponentName = opponent.username;
                 
-                // Create game
-                const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, difficulty);
+                // Create game with player names stored
+                const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, difficulty, playerName, opponent.username);
                 this.gameId = game.id;
                 
                 // Update both players' queue status
@@ -616,30 +616,47 @@ class GameClient {
                     this.gameId = myStatus.match_id;
                     this.isHost = false;
                     
-                    // Get opponent name from game info
-                    let opponentName = 'Rakip';
+                    // Get opponent name - try multiple methods
+                    let opponentName = null;
                     
-                    // Try to get game info for opponent name
-                    const gameInfo = await SupabaseClient.getGameInfo(myStatus.match_id);
-                    if (gameInfo) {
-                        // Determine which player is opponent
-                        const isPlayer1 = gameInfo.player1_id === odaUserId;
-                        const opponentId = isPlayer1 ? gameInfo.player2_id : gameInfo.player1_id;
-                        
-                        // Try to get opponent from queue
-                        const opponentInfo = await SupabaseClient.getOpponentFromQueue(myStatus.match_id, odaUserId);
-                        if (opponentInfo?.username) {
-                            opponentName = opponentInfo.username;
+                    // Method 1: Try to get from queue with match_id
+                    const opponentInfo = await SupabaseClient.getOpponentFromQueue(myStatus.match_id, odaUserId);
+                    if (opponentInfo?.username) {
+                        opponentName = opponentInfo.username;
+                    }
+                    
+                    // Method 2: Try game info board_state
+                    if (!opponentName) {
+                        const gameInfo = await SupabaseClient.getGameInfo(myStatus.match_id);
+                        if (gameInfo?.board_state) {
+                            const isPlayer1 = gameInfo.player1_id === odaUserId;
+                            opponentName = isPlayer1 ? gameInfo.board_state.player2_name : gameInfo.board_state.player1_name;
                         }
                     }
                     
+                    // Method 3: Try finding in queue by difficulty
+                    if (!opponentName) {
+                        const allInQueue = await SupabaseClient.findAllInQueue(difficulty, odaUserId);
+                        if (allInQueue && allInQueue.length > 0) {
+                            // Find one that's matched
+                            const matched = allInQueue.find(p => p.status === 'matched');
+                            if (matched?.username) {
+                                opponentName = matched.username;
+                            } else if (allInQueue[0]?.username) {
+                                opponentName = allInQueue[0].username;
+                            }
+                        }
+                    }
+                    
+                    // Start game - opponent name will be updated via broadcast if still null
                     this.startGame({
                         gameId: myStatus.match_id,
-                        opponent: opponentName,
+                        opponent: opponentName || '...',
                         difficulty: difficulty,
                         gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
                         mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
-                        myName: playerName
+                        myName: playerName,
+                        waitingForOpponentName: !opponentName
                     });
                     return;
                 }
@@ -654,8 +671,8 @@ class GameClient {
                     this.opponentId = opponent.user_id;
                     this.opponentName = opponent.username;
                     
-                    // Create game
-                    const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, difficulty);
+                    // Create game with player names
+                    const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, difficulty, playerName, opponent.username);
                     this.gameId = game.id;
                     
                     // Update both players' queue status
@@ -819,15 +836,42 @@ class GameClient {
                             this.opponentNameDisplay.textContent = senderName;
                         }
                         console.log('Received opponent name:', senderName);
+                        
+                        // Stop requesting if we got a valid name
+                        if (this.nameRequestInterval) {
+                            clearInterval(this.nameRequestInterval);
+                            this.nameRequestInterval = null;
+                        }
                     }
                 }
             })
             .subscribe(async (status) => {
                 if (status === 'SUBSCRIBED') {
-                    // Send our name to opponent
-                    setTimeout(() => {
-                        this.broadcastPlayerInfo();
-                    }, 500);
+                    // Send our name to opponent multiple times to ensure delivery
+                    this.broadcastPlayerInfo();
+                    setTimeout(() => this.broadcastPlayerInfo(), 300);
+                    setTimeout(() => this.broadcastPlayerInfo(), 800);
+                    setTimeout(() => this.broadcastPlayerInfo(), 1500);
+                    
+                    // If opponent name is still unknown, keep requesting
+                    if (!this.opponentName || this.opponentName === '...') {
+                        this.nameRequestInterval = setInterval(() => {
+                            this.broadcastPlayerInfo();
+                            // Stop after getting name or 10 seconds
+                            if (this.opponentName && this.opponentName !== '...') {
+                                clearInterval(this.nameRequestInterval);
+                                this.nameRequestInterval = null;
+                            }
+                        }, 2000);
+                        
+                        // Clear after 10 seconds max
+                        setTimeout(() => {
+                            if (this.nameRequestInterval) {
+                                clearInterval(this.nameRequestInterval);
+                                this.nameRequestInterval = null;
+                            }
+                        }, 10000);
+                    }
                 }
             });
     }
