@@ -645,8 +645,35 @@ class GameClient {
             document.getElementById('mobile-flag-btn')?.addEventListener('click', () => this.mobileFlagAction());
             document.getElementById('mobile-cancel-btn')?.addEventListener('click', () => this.hideMobileMenu());
         } else {
-            // Desktop: Normal click handling
-            playerCanvas?.addEventListener('click', (e) => this.handleCellClick(e));
+            // Desktop: Drag-to-reveal support
+            this.isDragging = false;
+            this.lastDragCell = null;
+            
+            playerCanvas?.addEventListener('mousedown', (e) => {
+                if (e.button === 0) { // Left mouse button
+                    this.isDragging = true;
+                    this.lastDragCell = null;
+                    this.handleCellReveal(e);
+                }
+            });
+            
+            playerCanvas?.addEventListener('mousemove', (e) => {
+                if (this.isDragging) {
+                    this.handleCellReveal(e);
+                }
+            });
+            
+            playerCanvas?.addEventListener('mouseup', (e) => {
+                if (e.button === 0) {
+                    this.isDragging = false;
+                    this.lastDragCell = null;
+                }
+            });
+            
+            playerCanvas?.addEventListener('mouseleave', () => {
+                this.isDragging = false;
+                this.lastDragCell = null;
+            });
         }
         
         // Right click for desktop (flag)
@@ -1211,6 +1238,94 @@ class GameClient {
                 this.endGame();
             }
         }, 100);
+    }
+
+    // Handle cell reveal for drag-to-reveal feature
+    handleCellReveal(e) {
+        if (this.isFrozen && Date.now() < this.frozenUntil) {
+            if (!this.isDragging) this.showNotification('You are frozen!', 'error');
+            return;
+        }
+        
+        const cell = this.playerBoard?.getCellFromClick(e);
+        if (!cell) return;
+        
+        // Skip if same cell as last drag position
+        const cellKey = `${cell.x},${cell.y}`;
+        if (this.lastDragCell === cellKey) return;
+        this.lastDragCell = cellKey;
+        
+        // Skip if already revealed or flagged
+        if (this.playerBoard.grid[cell.y][cell.x].isRevealed) return;
+        if (this.playerBoard.grid[cell.y][cell.x].isFlagged) return;
+        
+        // Track revealed cells to prevent double counting
+        if (this.revealedCells?.has(cellKey)) return;
+        
+        // Generate mines on first click
+        if (!this.minesGenerated) {
+            const mineCount = this.pendingMineCount || 20;
+            this.playerBoard.generateMines(mineCount, cell.x, cell.y);
+            this.minesGenerated = true;
+        }
+        
+        this.audio.playClick();
+        
+        const revealed = this.playerBoard.revealCell(cell.x, cell.y);
+        this.playerBoard.render();
+        
+        // Add revealed cells to set
+        revealed.forEach(c => {
+            this.revealedCells?.add(`${c.x},${c.y}`);
+        });
+        
+        // Calculate score
+        let points = 0;
+        let hitMine = false;
+        
+        revealed.forEach(c => {
+            if (c.isMine) {
+                hitMine = true;
+                if (this.hasShield) {
+                    this.hasShield = false;
+                    this.shieldIndicator?.classList.add('hidden');
+                    this.showPointsChange('Shield!', 'success');
+                    if (this.shieldTimeout) {
+                        clearTimeout(this.shieldTimeout);
+                        this.shieldTimeout = null;
+                    }
+                    const notification = document.getElementById('power-notification');
+                    if (notification) notification.classList.remove('show');
+                    this.broadcastPower('shieldBroken', {});
+                } else {
+                    points -= 30;
+                }
+            } else {
+                points += 5;
+            }
+        });
+        
+        this.score = Math.max(0, this.score + points);
+        this.updateScore();
+        this.updatePowerButtons();
+        
+        if (hitMine && !this.hasShield) {
+            this.audio.playMine();
+            this.showPointsChange('-30', 'error');
+            // Stop dragging when hit mine
+            this.isDragging = false;
+            this.lastDragCell = null;
+        } else if (points > 0) {
+            this.audio.playReveal(revealed.length);
+        }
+        
+        // Broadcast move
+        this.broadcastMove({ x: cell.x, y: cell.y, revealed, score: this.score });
+        
+        // Check win condition
+        if (this.playerBoard.getUnrevealedCount() === 0) {
+            this.endGame(true);
+        }
     }
 
     handleCellClick(e) {
