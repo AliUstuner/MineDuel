@@ -231,6 +231,16 @@ export async function getGameInfo(gameId) {
         .single();
 
     if (error) return null;
+    
+    // Extract values from board_state if available
+    if (data && data.board_state) {
+        data.mine_seed = data.board_state.mine_seed;
+        data.grid_size = data.board_state.grid_size;
+        data.mine_count = data.board_state.mine_count;
+        data.player1_name = data.board_state.player1_name;
+        data.player2_name = data.board_state.player2_name;
+    }
+    
     return data;
 }
 
@@ -282,28 +292,26 @@ export async function createGame(player1Id, player2Id, difficulty, player1Name =
     // Generate a unique seed for mines - this makes the game verifiable
     const mineSeed = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${player1Id}_${player2Id}`;
     
+    // Base game data (compatible with old schema)
     const gameData = {
         player1_id: player1Id,
         player2_id: player2Id,
         difficulty,
         status: 'in_progress',
         player1_score: 0,
-        player2_score: 0,
-        // Security fields
-        mine_seed: mineSeed,
-        grid_size: gridSize,
-        mine_count: mineCount,
-        player1_name: player1Name,
-        player2_name: player2Name,
-        player1_server_score: 0,
-        player2_server_score: 0,
-        player1_moves: [],
-        player2_moves: [],
-        started_at: new Date().toISOString(),
-        time_limit: 120
+        player2_score: 0
     };
     
-    console.log('[SUPABASE] createGame (secure) called');
+    // Store player names in board_state for backwards compatibility
+    gameData.board_state = {
+        player1_name: player1Name,
+        player2_name: player2Name,
+        mine_seed: mineSeed,
+        grid_size: gridSize,
+        mine_count: mineCount
+    };
+    
+    console.log('[SUPABASE] createGame called');
     
     const { data, error } = await supabase
         .from('games')
@@ -317,7 +325,16 @@ export async function createGame(player1Id, player2Id, difficulty, player1Name =
     }
     
     console.log('[SUPABASE] createGame success, id:', data.id);
-    return { ...data, mineSeed, gridSize, mineCount };
+    
+    // Return with extracted values for easy access
+    return { 
+        ...data, 
+        mineSeed, 
+        gridSize, 
+        mineCount,
+        player1_name: player1Name,
+        player2_name: player2Name
+    };
 }
 
 export async function updateGame(gameId, updates) {
