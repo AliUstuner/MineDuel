@@ -1095,56 +1095,25 @@ class GameClient {
         }
         
         const cell = this.playerBoard?.getCellFromClick(e);
-        if (!cell) {
-            console.log('[CLICK] No cell from click');
-            return;
-        }
+        if (!cell) return;
         
-        console.log('[CLICK] Cell clicked:', cell.x, cell.y);
-        
-        if (this.playerBoard.grid[cell.y][cell.x].isRevealed) {
-            console.log('[CLICK] Cell already revealed');
-            return;
-        }
-        if (this.playerBoard.grid[cell.y][cell.x].isFlagged) {
-            console.log('[CLICK] Cell is flagged');
-            return;
-        }
+        if (this.playerBoard.grid[cell.y][cell.x].isRevealed) return;
+        if (this.playerBoard.grid[cell.y][cell.x].isFlagged) return;
         
         // Track revealed cells to prevent double counting
         const cellKey = `${cell.x},${cell.y}`;
-        if (this.revealedCells?.has(cellKey)) {
-            console.log('[CLICK] Cell already in revealedCells set');
-            return;
-        }
+        if (this.revealedCells?.has(cellKey)) return;
         
-        // Generate mines on first click using seed
+        // Generate mines on first click (classic random - fair and fun)
         if (!this.minesGenerated) {
-            console.log('[MINES] Generating mines, seed:', this.mineSeed ? 'present' : 'none');
-            if (this.mineSeed) {
-                // Use server-provided seed + player ID for unique generation per player
-                const mines = SupabaseClient.generateMinesFromSeed(
-                    this.mineSeed, 
-                    this.pendingGridSize || 10, 
-                    this.pendingMineCount || 20,
-                    cell.x,
-                    cell.y,
-                    this.odaUserId || 'player'
-                );
-                console.log('[MINES] Generated from seed:', mines.length, 'mines');
-                this.playerBoard.setMinesFromPositions(mines);
-            } else {
-                // Fallback to random
-                console.log('[MINES] Random generation (no seed)');
-                this.playerBoard.generateMines(this.pendingMineCount || 20, cell.x, cell.y);
-            }
+            const mineCount = this.pendingMineCount || 20;
+            this.playerBoard.generateMines(mineCount, cell.x, cell.y);
             this.minesGenerated = true;
         }
         
         this.audio.playClick();
         
         const revealed = this.playerBoard.revealCell(cell.x, cell.y);
-        console.log('[CLICK] Revealed cells:', revealed.length);
         this.playerBoard.render();
         
         // Add revealed cells to set
@@ -1299,26 +1268,10 @@ class GameClient {
             return;
         }
         
-        // Generate mines on first click if needed
+        // Generate mines on first click (classic random - fair and fun)
         if (!this.minesGenerated) {
-            console.log('[MOBILE] Generating mines, seed:', this.mineSeed ? 'present' : 'none');
-            if (this.mineSeed) {
-                // Use server-provided seed + player ID for unique generation per player
-                const mines = SupabaseClient.generateMinesFromSeed(
-                    this.mineSeed, 
-                    this.pendingGridSize || 10, 
-                    this.pendingMineCount || 20,
-                    cell.x,
-                    cell.y,
-                    this.odaUserId || 'player'
-                );
-                console.log('[MOBILE] Generated from seed:', mines.length, 'mines');
-                this.playerBoard.setMinesFromPositions(mines);
-            } else {
-                // Fallback to random
-                console.log('[MOBILE] Random generation (no seed)');
-                this.playerBoard.generateMines(this.pendingMineCount || 20, cell.x, cell.y);
-            }
+            const mineCount = this.pendingMineCount || 20;
+            this.playerBoard.generateMines(mineCount, cell.x, cell.y);
             this.minesGenerated = true;
         }
         
@@ -1330,8 +1283,6 @@ class GameClient {
         revealed.forEach(c => {
             this.revealedCells?.add(`${c.x},${c.y}`);
         });
-        
-        console.log('[MOBILE] Revealed cells:', revealed.length);
         
         // Calculate score
         let points = 0;
