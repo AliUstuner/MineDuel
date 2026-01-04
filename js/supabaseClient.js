@@ -271,24 +271,39 @@ export async function updateMatchStatus(odaId, odaUsers, odaStatus, matchId = nu
 // ==================== GAMES ====================
 
 export async function createGame(player1Id, player2Id, difficulty, player1Name = null, player2Name = null) {
+    const config = {
+        easy: { gridSize: 8, mineCount: 10 },
+        medium: { gridSize: 10, mineCount: 20 },
+        hard: { gridSize: 12, mineCount: 35 }
+    };
+    
+    const { gridSize, mineCount } = config[difficulty] || config.medium;
+    
+    // Generate a unique seed for mines - this makes the game verifiable
+    const mineSeed = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${player1Id}_${player2Id}`;
+    
     const gameData = {
         player1_id: player1Id,
         player2_id: player2Id,
         difficulty,
         status: 'in_progress',
         player1_score: 0,
-        player2_score: 0
+        player2_score: 0,
+        // Security fields
+        mine_seed: mineSeed,
+        grid_size: gridSize,
+        mine_count: mineCount,
+        player1_name: player1Name,
+        player2_name: player2Name,
+        player1_server_score: 0,
+        player2_server_score: 0,
+        player1_moves: [],
+        player2_moves: [],
+        started_at: new Date().toISOString(),
+        time_limit: 120
     };
     
-    // Add player names to board_state for storage (since we don't have separate columns)
-    if (player1Name || player2Name) {
-        gameData.board_state = {
-            player1_name: player1Name,
-            player2_name: player2Name
-        };
-    }
-    
-    console.log('[SUPABASE] createGame called with:', gameData);
+    console.log('[SUPABASE] createGame (secure) called');
     
     const { data, error } = await supabase
         .from('games')
@@ -296,10 +311,13 @@ export async function createGame(player1Id, player2Id, difficulty, player1Name =
         .select()
         .single();
 
-    console.log('[SUPABASE] createGame result:', { data, error });
+    if (error) {
+        console.error('[SUPABASE] createGame error:', error);
+        throw error;
+    }
     
-    if (error) throw error;
-    return data;
+    console.log('[SUPABASE] createGame success, id:', data.id);
+    return { ...data, mineSeed, gridSize, mineCount };
 }
 
 export async function updateGame(gameId, updates) {
@@ -424,6 +442,133 @@ export async function updatePlayerStats(userId, isWinner, isDraw, score) {
 
     if (error) throw error;
     return { newRating, ratingChange };
+}
+
+// ==================== SECURE GAME FUNCTIONS ====================
+
+// Create a secure game with server-generated mine seed
+export async function createSecureGame(player1Id, player1Name, player2Id, player2Name, difficulty) {
+    const config = {
+        easy: { gridSize: 8, mineCount: 10 },
+        medium: { gridSize: 10, mineCount: 20 },
+        hard: { gridSize: 12, mineCount: 35 }
+    };
+    
+    const { gridSize, mineCount } = config[difficulty] || config.medium;
+    
+    // Generate a unique seed for mines
+    const mineSeed = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${player1Id}_${player2Id}`;
+    
+    const { data, error } = await supabase
+        .from('games')
+        .insert({
+            player1_id: player1Id,
+            player2_id: player2Id,
+            player1_name: player1Name,
+            player2_name: player2Name,
+            difficulty,
+            status: 'in_progress',
+            player1_score: 0,
+            player2_score: 0,
+            player1_server_score: 0,
+            player2_server_score: 0,
+            mine_seed: mineSeed,
+            grid_size: gridSize,
+            mine_count: mineCount,
+            player1_moves: [],
+            player2_moves: [],
+            started_at: new Date().toISOString(),
+            time_limit: 120
+        })
+        .select()
+        .single();
+
+    if (error) throw error;
+    return { ...data, mineSeed, gridSize, mineCount };
+}
+
+// Validate and record a move on the server
+export async function makeSecureMove(gameId, playerId, x, y, moveType = 'reveal') {
+    const { data, error } = await supabase
+        .rpc('make_move', {
+            p_game_id: gameId,
+            p_player_id: playerId,
+            p_x: x,
+            p_y: y,
+            p_move_type: moveType
+        });
+    
+    if (error) {
+        console.error('Secure move error:', error);
+        return { success: false, error: error.message };
+    }
+    
+    return data;
+}
+
+// End game and get server-validated results
+export async function endSecureGame(gameId) {
+    const { data, error } = await supabase
+        .rpc('end_game', {
+            p_game_id: gameId
+        });
+    
+    if (error) {
+        console.error('End game error:', error);
+        return { success: false, error: error.message };
+    }
+    
+    return data;
+}
+
+// Get server-validated scores
+export async function getServerScores(gameId) {
+    const { data, error } = await supabase
+        .from('games')
+        .select('player1_server_score, player2_server_score, player1_id, player2_id, status')
+        .eq('id', gameId)
+        .single();
+    
+    if (error) return null;
+    return data;
+}
+
+// Generate mines from seed (same algorithm as server)
+export function generateMinesFromSeed(seed, gridSize, mineCount, safeX = -1, safeY = -1) {
+    const mines = [];
+    let i = 0;
+    let attempts = 0;
+    
+    // Simple hash function
+    const hashString = (str) => {
+        let hash = 0;
+        for (let j = 0; j < str.length; j++) {
+            const char = str.charCodeAt(j);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return Math.abs(hash);
+    };
+    
+    while (mines.length < mineCount && attempts < 1000) {
+        const x = hashString(seed + i + 'x') % gridSize;
+        const y = hashString(seed + i + 'y') % gridSize;
+        
+        // Check safe zone
+        const inSafeZone = x >= safeX - 1 && x <= safeX + 1 && y >= safeY - 1 && y <= safeY + 1;
+        
+        // Check if already exists
+        const exists = mines.some(m => m.x === x && m.y === y);
+        
+        if (!inSafeZone && !exists) {
+            mines.push({ x, y });
+        }
+        
+        i++;
+        attempts++;
+    }
+    
+    return mines;
 }
 
 export default supabase;

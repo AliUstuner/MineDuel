@@ -183,6 +183,37 @@ export class BoardManager {
     }
 
     /**
+     * Set mines from predetermined positions (for server-verified games)
+     * @param {Array} positions - Array of {x, y} objects representing mine positions
+     */
+    setMinesFromPositions(positions) {
+        if (!positions || !Array.isArray(positions)) {
+            console.error('[BoardManager] Invalid mine positions');
+            return;
+        }
+        
+        // Clear existing mines
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                this.grid[y][x].isMine = false;
+            }
+        }
+        
+        // Place mines at specified positions
+        positions.forEach(pos => {
+            if (pos.x >= 0 && pos.x < this.gridSize && pos.y >= 0 && pos.y < this.gridSize) {
+                this.grid[pos.y][pos.x].setMine();
+            }
+        });
+        
+        // Recalculate neighbor counts
+        this.calculateNeighborCounts();
+        this.gameStarted = true;
+        
+        console.log(`[BoardManager] Set ${positions.length} mines from server positions`);
+    }
+
+    /**
      * Shuffle array using Fisher-Yates algorithm
      */
     shuffleArray(array) {

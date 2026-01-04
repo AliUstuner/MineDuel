@@ -623,23 +623,25 @@ class GameClient {
                 this.opponentId = opponent.user_id;
                 this.opponentName = opponent.username;
                 
-                // Create game with player names stored
+                // Create game with player names and security seed
                 const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, difficulty, playerName, opponent.username);
-                console.log('[MATCHMAKING] Game created:', game);
+                console.log('[MATCHMAKING] Secure game created:', game.id);
                 this.gameId = game.id;
                 
                 // Update both players' queue status
                 await SupabaseClient.updateMatchStatus(null, odaUserId, 'matched', game.id);
                 await SupabaseClient.updateMatchStatus(null, opponent.user_id, 'matched', game.id);
                 
-                // Start the game with explicit player names
+                // Start the game with mine seed for secure generation
                 this.startGame({
                     gameId: game.id,
                     opponent: opponent.username,
                     difficulty: difficulty,
-                    gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
-                    mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
-                    myName: playerName
+                    gridSize: game.gridSize || CONFIG.DIFFICULTIES[difficulty].gridSize,
+                    mineCount: game.mineCount || CONFIG.DIFFICULTIES[difficulty].mineCount,
+                    myName: playerName,
+                    mineSeed: game.mineSeed,
+                    isPlayer1: true
                 });
             } else {
                 // No opponent found, join queue and start polling
@@ -671,9 +673,11 @@ class GameClient {
                             gameId: game.id,
                             opponent: quickCheck.username,
                             difficulty: difficulty,
-                            gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
-                            mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
-                            myName: playerName
+                            gridSize: game.gridSize || CONFIG.DIFFICULTIES[difficulty].gridSize,
+                            mineCount: game.mineCount || CONFIG.DIFFICULTIES[difficulty].mineCount,
+                            myName: playerName,
+                            mineSeed: game.mineSeed,
+                            isPlayer1: true
                         });
                     }
                 }, 100);
@@ -699,46 +703,33 @@ class GameClient {
                     this.gameId = myStatus.match_id;
                     this.isHost = false;
                     
-                    // Get opponent name - try multiple methods
-                    let opponentName = null;
+                    // Get game info including mine seed
+                    const gameInfo = await SupabaseClient.getGameInfo(myStatus.match_id);
                     
-                    // Method 1: Try to get from queue with match_id
-                    const opponentInfo = await SupabaseClient.getOpponentFromQueue(myStatus.match_id, odaUserId);
-                    if (opponentInfo?.username) {
-                        opponentName = opponentInfo.username;
-                    }
+                    // Determine if we're player1 or player2
+                    const isPlayer1 = gameInfo?.player1_id === odaUserId;
                     
-                    // Method 2: Try game info board_state
+                    // Get opponent name from game info
+                    let opponentName = isPlayer1 ? gameInfo?.player2_name : gameInfo?.player1_name;
+                    
+                    // Fallback: Try to get from queue
                     if (!opponentName) {
-                        const gameInfo = await SupabaseClient.getGameInfo(myStatus.match_id);
-                        if (gameInfo?.board_state) {
-                            const isPlayer1 = gameInfo.player1_id === odaUserId;
-                            opponentName = isPlayer1 ? gameInfo.board_state.player2_name : gameInfo.board_state.player1_name;
+                        const opponentInfo = await SupabaseClient.getOpponentFromQueue(myStatus.match_id, odaUserId);
+                        if (opponentInfo?.username) {
+                            opponentName = opponentInfo.username;
                         }
                     }
                     
-                    // Method 3: Try finding in queue by difficulty
-                    if (!opponentName) {
-                        const allInQueue = await SupabaseClient.findAllInQueue(difficulty, odaUserId);
-                        if (allInQueue && allInQueue.length > 0) {
-                            // Find one that's matched
-                            const matched = allInQueue.find(p => p.status === 'matched');
-                            if (matched?.username) {
-                                opponentName = matched.username;
-                            } else if (allInQueue[0]?.username) {
-                                opponentName = allInQueue[0].username;
-                            }
-                        }
-                    }
-                    
-                    // Start game - opponent name will be updated via broadcast if still null
+                    // Start game with server-provided mine seed
                     this.startGame({
                         gameId: myStatus.match_id,
                         opponent: opponentName || '...',
                         difficulty: difficulty,
-                        gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
-                        mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
+                        gridSize: gameInfo?.grid_size || CONFIG.DIFFICULTIES[difficulty].gridSize,
+                        mineCount: gameInfo?.mine_count || CONFIG.DIFFICULTIES[difficulty].mineCount,
                         myName: playerName,
+                        mineSeed: gameInfo?.mine_seed,
+                        isPlayer1: isPlayer1,
                         waitingForOpponentName: !opponentName
                     });
                     return;
@@ -754,7 +745,7 @@ class GameClient {
                     this.opponentId = opponent.user_id;
                     this.opponentName = opponent.username;
                     
-                    // Create game with player names
+                    // Create game with player names and security
                     const game = await SupabaseClient.createGame(odaUserId, opponent.user_id, difficulty, playerName, opponent.username);
                     this.gameId = game.id;
                     
@@ -762,14 +753,16 @@ class GameClient {
                     await SupabaseClient.updateMatchStatus(null, odaUserId, 'matched', game.id);
                     await SupabaseClient.updateMatchStatus(null, opponent.user_id, 'matched', game.id);
                     
-                    // Start the game
+                    // Start the game with mine seed
                     this.startGame({
                         gameId: game.id,
                         opponent: opponent.username,
                         difficulty: difficulty,
-                        gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
-                        mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
-                        myName: playerName
+                        gridSize: game.gridSize || CONFIG.DIFFICULTIES[difficulty].gridSize,
+                        mineCount: game.mineCount || CONFIG.DIFFICULTIES[difficulty].mineCount,
+                        myName: playerName,
+                        mineSeed: game.mineSeed,
+                        isPlayer1: true
                     });
                 }
             } catch (e) {
@@ -842,12 +835,19 @@ class GameClient {
         const gridSize = config.gridSize || 10;
         const mineCount = config.mineCount || 20;
         
+        // Store mine seed for secure generation
+        this.mineSeed = config.mineSeed;
+        this.isPlayer1 = config.isPlayer1;
+        
         // Reset state
         this.score = 0;
         this.opponentScore = 0;
         this.hasShield = false;
         this.isFrozen = false;
         this.gameEnded = false;
+        
+        // Track revealed cells to prevent duplicates
+        this.revealedCells = new Set();
         
         // Initialize power usage limits (max 3 uses per power per game)
         this.powerUsesLeft = {
@@ -864,6 +864,7 @@ class GameClient {
         
         // Store mine count for later generation
         this.pendingMineCount = mineCount;
+        this.pendingGridSize = gridSize;
         
         // Update UI - use saved myName for player display
         if (this.playerNameDisplay) this.playerNameDisplay.textContent = this.myName;
@@ -1058,9 +1059,27 @@ class GameClient {
         if (this.playerBoard.grid[cell.y][cell.x].isRevealed) return;
         if (this.playerBoard.grid[cell.y][cell.x].isFlagged) return;
         
-        // Generate mines on first click
+        // Track revealed cells to prevent double counting
+        const cellKey = `${cell.x},${cell.y}`;
+        if (this.revealedCells?.has(cellKey)) return;
+        
+        // Generate mines on first click using seed
         if (!this.minesGenerated) {
-            this.playerBoard.generateMines(this.pendingMineCount, cell.x, cell.y);
+            if (this.mineSeed) {
+                // Use server-provided seed for deterministic mine generation
+                const mines = SupabaseClient.generateMinesFromSeed(
+                    this.mineSeed, 
+                    this.pendingGridSize || 10, 
+                    this.pendingMineCount,
+                    cell.x,
+                    cell.y
+                );
+                this.playerBoard.setMinesFromPositions(mines);
+                console.log('[SECURITY] Mines generated from seed:', mines.length);
+            } else {
+                // Fallback to random (less secure)
+                this.playerBoard.generateMines(this.pendingMineCount, cell.x, cell.y);
+            }
             this.minesGenerated = true;
         }
         
@@ -1068,6 +1087,11 @@ class GameClient {
         
         const revealed = this.playerBoard.revealCell(cell.x, cell.y);
         this.playerBoard.render();
+        
+        // Add revealed cells to set
+        revealed.forEach(c => {
+            this.revealedCells?.add(`${c.x},${c.y}`);
+        });
         
         // Calculate score
         let points = 0;
