@@ -192,6 +192,39 @@ class BoardRenderer {
         return count;
     }
 
+    setMinesFromPositions(positions) {
+        if (!positions || !Array.isArray(positions)) {
+            console.error('[BoardRenderer] Invalid mine positions');
+            return;
+        }
+        
+        this.mines = positions;
+        
+        // Clear existing mines and set new ones
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                this.grid[y][x].isMine = false;
+            }
+        }
+        
+        positions.forEach(pos => {
+            if (pos.x >= 0 && pos.x < this.gridSize && pos.y >= 0 && pos.y < this.gridSize) {
+                this.grid[pos.y][pos.x].isMine = true;
+            }
+        });
+        
+        // Calculate neighbor counts
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                if (!this.grid[y][x].isMine) {
+                    this.grid[y][x].neighborCount = this.countAdjacentMines(x, y);
+                }
+            }
+        }
+        
+        console.log(`[BoardRenderer] Set ${positions.length} mines from positions`);
+    }
+
     revealCell(x, y) {
         if (x < 0 || x >= this.gridSize || y < 0 || y >= this.gridSize) return [];
         const cell = this.grid[y][x];
@@ -839,6 +872,13 @@ class GameClient {
         this.mineSeed = config.mineSeed;
         this.isPlayer1 = config.isPlayer1;
         
+        console.log('[GAME] Starting game with config:', {
+            gridSize,
+            mineCount,
+            mineSeed: this.mineSeed ? 'present' : 'none',
+            isPlayer1: this.isPlayer1
+        });
+        
         // Reset state
         this.score = 0;
         this.opponentScore = 0;
@@ -1055,30 +1095,47 @@ class GameClient {
         }
         
         const cell = this.playerBoard?.getCellFromClick(e);
-        if (!cell) return;
-        if (this.playerBoard.grid[cell.y][cell.x].isRevealed) return;
-        if (this.playerBoard.grid[cell.y][cell.x].isFlagged) return;
+        if (!cell) {
+            console.log('[CLICK] No cell from click');
+            return;
+        }
+        
+        console.log('[CLICK] Cell clicked:', cell.x, cell.y);
+        
+        if (this.playerBoard.grid[cell.y][cell.x].isRevealed) {
+            console.log('[CLICK] Cell already revealed');
+            return;
+        }
+        if (this.playerBoard.grid[cell.y][cell.x].isFlagged) {
+            console.log('[CLICK] Cell is flagged');
+            return;
+        }
         
         // Track revealed cells to prevent double counting
         const cellKey = `${cell.x},${cell.y}`;
-        if (this.revealedCells?.has(cellKey)) return;
+        if (this.revealedCells?.has(cellKey)) {
+            console.log('[CLICK] Cell already in revealedCells set');
+            return;
+        }
         
         // Generate mines on first click using seed
         if (!this.minesGenerated) {
+            console.log('[MINES] Generating mines, seed:', this.mineSeed ? 'present' : 'none');
             if (this.mineSeed) {
                 // Use server-provided seed for deterministic mine generation
                 const mines = SupabaseClient.generateMinesFromSeed(
                     this.mineSeed, 
                     this.pendingGridSize || 10, 
-                    this.pendingMineCount,
+                    this.pendingMineCount || 20,
                     cell.x,
                     cell.y
                 );
+                console.log('[MINES] Generated from seed:', mines.length, 'mines');
                 this.playerBoard.setMinesFromPositions(mines);
-                console.log('[SECURITY] Mines generated from seed:', mines.length);
             } else {
                 // Fallback to random (less secure)
-                this.playerBoard.generateMines(this.pendingMineCount, cell.x, cell.y);
+                console.log('[MINES] Fallback to random generation');
+                this.playerBoard.generateMines(this.pendingMineCount || 20, cell.x, cell.y);
             }
             this.minesGenerated = true;
         }
@@ -1086,6 +1143,7 @@ class GameClient {
         this.audio.playClick();
         
         const revealed = this.playerBoard.revealCell(cell.x, cell.y);
+        console.log('[CLICK] Revealed cells:', revealed.length);
         this.playerBoard.render();
         
         // Add revealed cells to set
@@ -1233,15 +1291,45 @@ class GameClient {
         this.removeHighlight();
         this.mobileActionMenu?.classList.add('hidden');
         
+        // Track revealed cells to prevent double counting
+        const cellKey = `${cell.x},${cell.y}`;
+        if (this.revealedCells?.has(cellKey)) {
+            this.selectedCell = null;
+            return;
+        }
+        
         // Generate mines on first click if needed
         if (!this.minesGenerated) {
-            this.playerBoard.generateMines(this.pendingMineCount, cell.x, cell.y);
+            console.log('[MOBILE] Generating mines, seed:', this.mineSeed ? 'present' : 'none');
+            if (this.mineSeed) {
+                // Use server-provided seed for deterministic mine generation
+                const mines = SupabaseClient.generateMinesFromSeed(
+                    this.mineSeed, 
+                    this.pendingGridSize || 10, 
+                    this.pendingMineCount || 20,
+                    cell.x,
+                    cell.y
+                );
+                console.log('[MOBILE] Generated from seed:', mines.length, 'mines');
+                this.playerBoard.setMinesFromPositions(mines);
+            } else {
+                // Fallback to random (less secure)
+                console.log('[MOBILE] Fallback to random generation');
+                this.playerBoard.generateMines(this.pendingMineCount || 20, cell.x, cell.y);
+            }
             this.minesGenerated = true;
         }
         
         // Reveal the cell directly
         const revealed = this.playerBoard.revealCell(cell.x, cell.y);
         this.playerBoard.render();
+        
+        // Add revealed cells to set
+        revealed.forEach(c => {
+            this.revealedCells?.add(`${c.x},${c.y}`);
+        });
+        
+        console.log('[MOBILE] Revealed cells:', revealed.length);
         
         // Calculate score
         let points = 0;
