@@ -1037,6 +1037,8 @@ class GameClient {
         this.hasShield = false;
         this.isFrozen = false;
         this.gameEnded = false;
+        this.iCompletedBoard = false;
+        this.opponentCompletedBoard = false;
         
         // Track revealed cells to prevent duplicates
         this.revealedCells = new Set();
@@ -1106,9 +1108,15 @@ class GameClient {
                         this.updateScore(false); // Don't re-broadcast
                     }
                     
+                    // Track if opponent completed the board
+                    if (data.completedBoard) {
+                        this.opponentCompletedBoard = true;
+                    }
+                    
                     // End our game too if not already ended
                     if (!this.gameEnded) {
                         this.gameEnded = true;
+                        this.iCompletedBoard = false; // I didn't complete first
                         
                         if (this.timerInterval) {
                             clearInterval(this.timerInterval);
@@ -1235,7 +1243,7 @@ class GameClient {
             if (remaining <= 0) {
                 clearInterval(this.timerInterval);
                 if (navTimer) navTimer.classList.add('hidden');
-                this.endGame();
+                this.endGame(false); // Time's up, not a board completion
             }
         }, 100);
     }
@@ -1950,10 +1958,11 @@ class GameClient {
         }, 3000);
     }
 
-    endGame(isWinner = null) {
+    endGame(completedBoard = false) {
         // Prevent multiple endGame calls
         if (this.gameEnded) return;
         this.gameEnded = true;
+        this.iCompletedBoard = completedBoard;
         
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
@@ -1964,14 +1973,15 @@ class GameClient {
         const navTimer = document.getElementById('nav-timer');
         if (navTimer) navTimer.classList.add('hidden');
         
-        // Broadcast game end with my final score immediately
+        // Broadcast game end with my final score and completion status
         if (this.gameChannel) {
             this.gameChannel.send({
                 type: 'broadcast',
                 event: 'gameEnd',
                 payload: { 
                     odaUserId: this.odaUserId,
-                    myFinalScore: this.score
+                    myFinalScore: this.score,
+                    completedBoard: completedBoard
                 }
             });
         }
@@ -1983,8 +1993,22 @@ class GameClient {
     }
     
     showGameResult() {
-        const isWinner = this.score > this.opponentScore;
-        const isDraw = this.score === this.opponentScore;
+        // Board completion wins over score
+        let isWinner, isDraw;
+        
+        if (this.iCompletedBoard && !this.opponentCompletedBoard) {
+            // I completed, opponent didn't = I win
+            isWinner = true;
+            isDraw = false;
+        } else if (!this.iCompletedBoard && this.opponentCompletedBoard) {
+            // Opponent completed, I didn't = I lose
+            isWinner = false;
+            isDraw = false;
+        } else {
+            // Neither or both completed - use score
+            isWinner = this.score > this.opponentScore;
+            isDraw = this.score === this.opponentScore;
+        }
         
         if (isDraw) {
             this.resultIcon.textContent = '🤝';
@@ -1992,12 +2016,12 @@ class GameClient {
             this.resultTitle.className = 'result-title draw';
         } else if (isWinner) {
             this.resultIcon.textContent = '🏆';
-            this.resultTitle.textContent = 'Zafer!';
+            this.resultTitle.textContent = this.iCompletedBoard ? 'Mayın Ustası!' : 'Zafer!';
             this.resultTitle.className = 'result-title victory';
             this.audio.playVictory();
         } else {
             this.resultIcon.textContent = '💔';
-            this.resultTitle.textContent = 'Yenilgi';
+            this.resultTitle.textContent = this.opponentCompletedBoard ? 'Rakip Tamamladı!' : 'Yenilgi';
             this.resultTitle.className = 'result-title defeat';
             this.audio.playDefeat();
         }
