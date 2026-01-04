@@ -1122,19 +1122,20 @@ class GameClient {
         if (!this.minesGenerated) {
             console.log('[MINES] Generating mines, seed:', this.mineSeed ? 'present' : 'none');
             if (this.mineSeed) {
-                // Use server-provided seed for deterministic mine generation
+                // Use server-provided seed + player ID for unique generation per player
                 const mines = SupabaseClient.generateMinesFromSeed(
                     this.mineSeed, 
                     this.pendingGridSize || 10, 
                     this.pendingMineCount || 20,
                     cell.x,
-                    cell.y
+                    cell.y,
+                    this.odaUserId || 'player'
                 );
                 console.log('[MINES] Generated from seed:', mines.length, 'mines');
                 this.playerBoard.setMinesFromPositions(mines);
             } else {
-                // Fallback to random (less secure)
-                console.log('[MINES] Fallback to random generation');
+                // Fallback to random
+                console.log('[MINES] Random generation (no seed)');
                 this.playerBoard.generateMines(this.pendingMineCount || 20, cell.x, cell.y);
             }
             this.minesGenerated = true;
@@ -1302,19 +1303,20 @@ class GameClient {
         if (!this.minesGenerated) {
             console.log('[MOBILE] Generating mines, seed:', this.mineSeed ? 'present' : 'none');
             if (this.mineSeed) {
-                // Use server-provided seed for deterministic mine generation
+                // Use server-provided seed + player ID for unique generation per player
                 const mines = SupabaseClient.generateMinesFromSeed(
                     this.mineSeed, 
                     this.pendingGridSize || 10, 
                     this.pendingMineCount || 20,
                     cell.x,
-                    cell.y
+                    cell.y,
+                    this.odaUserId || 'player'
                 );
                 console.log('[MOBILE] Generated from seed:', mines.length, 'mines');
                 this.playerBoard.setMinesFromPositions(mines);
             } else {
-                // Fallback to random (less secure)
-                console.log('[MOBILE] Fallback to random generation');
+                // Fallback to random
+                console.log('[MOBILE] Random generation (no seed)');
                 this.playerBoard.generateMines(this.pendingMineCount || 20, cell.x, cell.y);
             }
             this.minesGenerated = true;

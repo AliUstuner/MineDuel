@@ -281,8 +281,9 @@ export async function updateMatchStatus(odaId, odaUsers, odaStatus, matchId = nu
 // ==================== GAMES ====================
 
 export async function createGame(player1Id, player2Id, difficulty, player1Name = null, player2Name = null) {
+    // Same config as gameSupabase.js
     const config = {
-        easy: { gridSize: 8, mineCount: 10 },
+        easy: { gridSize: 8, mineCount: 12 },
         medium: { gridSize: 10, mineCount: 20 },
         hard: { gridSize: 12, mineCount: 35 }
     };
@@ -550,29 +551,43 @@ export async function getServerScores(gameId) {
     return data;
 }
 
-// Generate mines from seed (same algorithm as server)
-export function generateMinesFromSeed(seed, gridSize, mineCount, safeX = -1, safeY = -1) {
+// Generate mines from seed - each player gets different mines based on their ID
+export function generateMinesFromSeed(seed, gridSize, mineCount, safeX = -1, safeY = -1, playerId = '') {
     const mines = [];
     let i = 0;
     let attempts = 0;
     
-    // Simple hash function
+    // Combine seed with player ID and safe position for unique generation per player
+    const uniqueSeed = seed + '_' + playerId + '_safe_' + safeX + '_' + safeY;
+    
+    // Better hash function for more randomness
     const hashString = (str) => {
-        let hash = 0;
+        let hash = 5381;
         for (let j = 0; j < str.length; j++) {
-            const char = str.charCodeAt(j);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
+            hash = ((hash << 5) + hash) ^ str.charCodeAt(j);
         }
         return Math.abs(hash);
     };
     
-    while (mines.length < mineCount && attempts < 1000) {
-        const x = hashString(seed + i + 'x') % gridSize;
-        const y = hashString(seed + i + 'y') % gridSize;
+    // Seed a pseudo-random number generator for better distribution
+    const seededRandom = (seedStr, index) => {
+        const h1 = hashString(seedStr + index + 'a');
+        const h2 = hashString(seedStr + index + 'b');
+        return ((h1 * 2654435761) ^ h2) >>> 0;
+    };
+    
+    while (mines.length < mineCount && attempts < 2000) {
+        // Use seeded random for better distribution
+        const randX = seededRandom(uniqueSeed, i * 2);
+        const randY = seededRandom(uniqueSeed, i * 2 + 1);
         
-        // Check safe zone
-        const inSafeZone = x >= safeX - 1 && x <= safeX + 1 && y >= safeY - 1 && y <= safeY + 1;
+        const x = randX % gridSize;
+        const y = randY % gridSize;
+        
+        // Check safe zone (3x3 around first click)
+        const inSafeZone = safeX >= 0 && safeY >= 0 && 
+                          x >= safeX - 1 && x <= safeX + 1 && 
+                          y >= safeY - 1 && y <= safeY + 1;
         
         // Check if already exists
         const exists = mines.some(m => m.x === x && m.y === y);
@@ -585,6 +600,7 @@ export function generateMinesFromSeed(seed, gridSize, mineCount, safeX = -1, saf
         attempts++;
     }
     
+    console.log(`[MINES] Generated ${mines.length} mines for grid ${gridSize}x${gridSize}`);
     return mines;
 }
 
