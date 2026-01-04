@@ -134,48 +134,173 @@ class BoardRenderer {
     }
 
     generateMines(mineCount, excludeX = -1, excludeY = -1) {
-        this.mines = [];
-        const positions = [];
+        // Try to generate a solvable board (no 50/50 guessing required)
+        const maxAttempts = 50;
         
-        // Exclude a 3x3 area around first click (guaranteed safe start)
-        const excludeRadius = 1; // 3x3 area
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            this.mines = [];
+            this.grid = this.createEmptyGrid();
+            
+            const positions = [];
+            const excludeRadius = 1; // 3x3 safe zone around first click
+            
+            for (let y = 0; y < this.gridSize; y++) {
+                for (let x = 0; x < this.gridSize; x++) {
+                    const isExcluded = Math.abs(x - excludeX) <= excludeRadius && 
+                                       Math.abs(y - excludeY) <= excludeRadius;
+                    if (!isExcluded) {
+                        positions.push({ x, y });
+                    }
+                }
+            }
+            
+            const actualMineCount = Math.min(mineCount, positions.length);
+            
+            // Fisher-Yates shuffle
+            for (let i = positions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [positions[i], positions[j]] = [positions[j], positions[i]];
+            }
+            this.mines = positions.slice(0, actualMineCount);
+            
+            // Mark mines on grid
+            this.mines.forEach(m => {
+                if (this.grid[m.y] && this.grid[m.y][m.x]) {
+                    this.grid[m.y][m.x].isMine = true;
+                }
+            });
+            
+            // Calculate neighbor counts
+            for (let y = 0; y < this.gridSize; y++) {
+                for (let x = 0; x < this.gridSize; x++) {
+                    if (!this.grid[y][x].isMine) {
+                        this.grid[y][x].neighborCount = this.countAdjacentMines(x, y);
+                    }
+                }
+            }
+            
+            // Check if board is solvable without guessing
+            if (this.isBoardSolvable(excludeX, excludeY)) {
+                return; // Found a solvable board!
+            }
+        }
         
+        // If no solvable board found after max attempts, use last generated board
+        // (This is rare and the board will still be playable)
+    }
+
+    // Simulate solving the board using only logic (no guessing)
+    isBoardSolvable(startX, startY) {
+        // Create simulation grid
+        const simGrid = [];
         for (let y = 0; y < this.gridSize; y++) {
+            simGrid[y] = [];
             for (let x = 0; x < this.gridSize; x++) {
-                // Check if this cell is within the excluded area
-                const isExcluded = Math.abs(x - excludeX) <= excludeRadius && 
-                                   Math.abs(y - excludeY) <= excludeRadius;
-                if (!isExcluded) {
-                    positions.push({ x, y });
+                simGrid[y][x] = {
+                    isMine: this.grid[y][x].isMine,
+                    neighborCount: this.grid[y][x].neighborCount,
+                    isRevealed: false,
+                    isFlagged: false
+                };
+            }
+        }
+        
+        // Simulate first click (flood fill from start position)
+        const revealCell = (x, y) => {
+            if (x < 0 || x >= this.gridSize || y < 0 || y >= this.gridSize) return;
+            const cell = simGrid[y][x];
+            if (cell.isRevealed || cell.isFlagged || cell.isMine) return;
+            
+            cell.isRevealed = true;
+            
+            if (cell.neighborCount === 0) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx !== 0 || dy !== 0) {
+                            revealCell(x + dx, y + dy);
+                        }
+                    }
+                }
+            }
+        };
+        
+        // Start from first click
+        revealCell(startX, startY);
+        
+        // Keep applying logical deductions until no more progress
+        let progress = true;
+        let iterations = 0;
+        const maxIterations = 1000;
+        
+        while (progress && iterations < maxIterations) {
+            progress = false;
+            iterations++;
+            
+            for (let y = 0; y < this.gridSize; y++) {
+                for (let x = 0; x < this.gridSize; x++) {
+                    const cell = simGrid[y][x];
+                    if (!cell.isRevealed || cell.neighborCount === 0) continue;
+                    
+                    // Count unrevealed and flagged neighbors
+                    let unrevealedCount = 0;
+                    let flaggedCount = 0;
+                    const unrevealedNeighbors = [];
+                    
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            const nx = x + dx, ny = y + dy;
+                            if (nx >= 0 && nx < this.gridSize && ny >= 0 && ny < this.gridSize) {
+                                const neighbor = simGrid[ny][nx];
+                                if (neighbor.isFlagged) {
+                                    flaggedCount++;
+                                } else if (!neighbor.isRevealed) {
+                                    unrevealedCount++;
+                                    unrevealedNeighbors.push({ x: nx, y: ny });
+                                }
+                            }
+                        }
+                    }
+                    
+                    const remainingMines = cell.neighborCount - flaggedCount;
+                    
+                    // Rule 1: If remaining mines equals unrevealed neighbors, all are mines
+                    if (remainingMines === unrevealedCount && unrevealedCount > 0) {
+                        unrevealedNeighbors.forEach(n => {
+                            if (!simGrid[n.y][n.x].isFlagged) {
+                                simGrid[n.y][n.x].isFlagged = true;
+                                progress = true;
+                            }
+                        });
+                    }
+                    
+                    // Rule 2: If remaining mines is 0, all unrevealed neighbors are safe
+                    if (remainingMines === 0 && unrevealedCount > 0) {
+                        unrevealedNeighbors.forEach(n => {
+                            if (!simGrid[n.y][n.x].isRevealed && !simGrid[n.y][n.x].isFlagged) {
+                                revealCell(n.x, n.y);
+                                progress = true;
+                            }
+                        });
+                    }
                 }
             }
         }
         
-        // Make sure we have enough positions for mines
-        const actualMineCount = Math.min(mineCount, positions.length);
-        
-        // Shuffle and pick
-        for (let i = positions.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [positions[i], positions[j]] = [positions[j], positions[i]];
-        }
-        this.mines = positions.slice(0, actualMineCount);
-        
-        // Mark mines on grid
-        this.mines.forEach(m => {
-            if (this.grid[m.y] && this.grid[m.y][m.x]) {
-                this.grid[m.y][m.x].isMine = true;
-            }
-        });
-        
-        // Calculate neighbor counts
+        // Check if all non-mine cells are revealed
+        let allRevealed = true;
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
-                if (!this.grid[y][x].isMine) {
-                    this.grid[y][x].neighborCount = this.countAdjacentMines(x, y);
+                const cell = simGrid[y][x];
+                if (!cell.isMine && !cell.isRevealed) {
+                    allRevealed = false;
+                    break;
                 }
             }
+            if (!allRevealed) break;
         }
+        
+        return allRevealed;
     }
 
     countAdjacentMines(x, y) {
