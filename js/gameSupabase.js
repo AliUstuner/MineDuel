@@ -905,11 +905,37 @@ class GameClient {
                 this.handleOpponentPower(payload.payload);
             })
             .on('broadcast', { event: 'gameEnd' }, (payload) => {
-                // Receive opponent's final score
+                // Receive opponent's final score and end game immediately
                 const data = payload.payload;
-                if (data.odaUserId !== this.odaUserId && data.myFinalScore !== undefined) {
-                    this.opponentScore = data.myFinalScore;
-                    this.updateScore();
+                if (data.odaUserId !== this.odaUserId) {
+                    if (data.myFinalScore !== undefined) {
+                        this.opponentScore = data.myFinalScore;
+                        this.updateScore(false); // Don't re-broadcast
+                    }
+                    
+                    // End our game too if not already ended
+                    if (!this.gameEnded) {
+                        this.gameEnded = true;
+                        
+                        if (this.timerInterval) {
+                            clearInterval(this.timerInterval);
+                            this.timerInterval = null;
+                        }
+                        
+                        const navTimer = document.getElementById('nav-timer');
+                        if (navTimer) navTimer.classList.add('hidden');
+                        
+                        // Show result immediately
+                        this.showGameResult();
+                    }
+                }
+            })
+            .on('broadcast', { event: 'scoreUpdate' }, (payload) => {
+                // Real-time score sync
+                const data = payload.payload;
+                if (data.odaUserId !== this.odaUserId && data.score !== undefined) {
+                    this.opponentScore = data.score;
+                    this.updateScore(false); // Don't re-broadcast
                 }
             })
             .on('broadcast', { event: 'playerInfo' }, (payload) => {
@@ -1633,7 +1659,7 @@ class GameClient {
         const navTimer = document.getElementById('nav-timer');
         if (navTimer) navTimer.classList.add('hidden');
         
-        // Broadcast game end with my final score
+        // Broadcast game end with my final score immediately
         if (this.gameChannel) {
             this.gameChannel.send({
                 type: 'broadcast',
@@ -1645,10 +1671,10 @@ class GameClient {
             });
         }
         
-        // Wait a bit to receive opponent's final score, then show result
+        // Show result with a very short delay to allow score sync
         setTimeout(() => {
             this.showGameResult();
-        }, 500);
+        }, 150);
     }
     
     showGameResult() {
@@ -1686,10 +1712,22 @@ class GameClient {
         }
     }
 
-    updateScore() {
+    updateScore(broadcast = true) {
         if (this.playerScoreDisplay) this.playerScoreDisplay.textContent = this.score;
         if (this.opponentScoreDisplay) this.opponentScoreDisplay.textContent = this.opponentScore;
         if (this.currentPointsDisplay) this.currentPointsDisplay.textContent = this.score;
+        
+        // Broadcast score to opponent for real-time sync
+        if (broadcast && this.gameChannel && !this.gameEnded) {
+            this.gameChannel.send({
+                type: 'broadcast',
+                event: 'scoreUpdate',
+                payload: {
+                    odaUserId: this.odaUserId,
+                    score: this.score
+                }
+            });
+        }
     }
 
     updatePowerButtons() {
