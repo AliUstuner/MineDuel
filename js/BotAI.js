@@ -134,7 +134,41 @@ export class BotAI {
                 return;
             }
             
-            // Make a smart decision
+            // 1. Consider using strategic powers first
+            if (Math.random() < this.settings.powerUsageChance) {
+                const powerUsed = this.considerUsingPower();
+                if (powerUsed) {
+                    console.log('[BotAI] Used power:', powerUsed);
+                    this.isThinking = false;
+                    this.game.hideBotThinking();
+                    this.scheduleNextMove();
+                    return;
+                }
+            }
+            
+            // 2. Flag known mines before making moves
+            const mineToFlag = this.findCellToFlag();
+            if (mineToFlag) {
+                console.log('[BotAI] Flagging mine at:', mineToFlag);
+                this.game.makeBotFlag(mineToFlag.x, mineToFlag.y);
+                this.isThinking = false;
+                this.game.hideBotThinking();
+                this.scheduleNextMove();
+                return;
+            }
+            
+            // 3. Remove wrong flags if stuck
+            const wrongFlag = this.findWrongFlag();
+            if (wrongFlag) {
+                console.log('[BotAI] Removing wrong flag at:', wrongFlag);
+                this.removeFlag(wrongFlag.x, wrongFlag.y);
+                this.isThinking = false;
+                this.game.hideBotThinking();
+                this.scheduleNextMove();
+                return;
+            }
+            
+            // 4. Make a smart decision
             const move = this.findSmartMove();
             
             if (move) {
@@ -275,6 +309,88 @@ export class BotAI {
         return safeCells;
     }
     
+    // Find a cell that should be flagged (known mine)
+    findCellToFlag() {
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.board.grid[y][x];
+                
+                // Only look at revealed numbered cells
+                if (!cell.isRevealed || cell.isMine || cell.neighborCount === 0) continue;
+                
+                const neighbors = this.getNeighbors(x, y);
+                const unrevealedNeighbors = neighbors.filter(n => {
+                    const nc = this.board.grid[n.y][n.x];
+                    return !nc.isRevealed && !nc.isFlagged;
+                });
+                const flaggedCount = neighbors.filter(n => 
+                    this.board.grid[n.y][n.x].isFlagged
+                ).length;
+                
+                const remainingMines = cell.neighborCount - flaggedCount;
+                
+                // If unrevealed count equals remaining mines, flag them all
+                if (remainingMines > 0 && unrevealedNeighbors.length === remainingMines) {
+                    // Return first unflagged mine to flag
+                    return unrevealedNeighbors[0];
+                }
+            }
+        }
+        return null;
+    }
+    
+    // Find a wrong flag that should be removed
+    findWrongFlag() {
+        // Only try to remove flags if bot is stuck and has no safe moves
+        const safeCells = this.findGuaranteedSafeCells();
+        if (safeCells.length > 0) return null; // Has safe moves, don't touch flags
+        
+        // Check each flagged cell
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.board.grid[y][x];
+                if (!cell.isFlagged) continue;
+                
+                // Count how many revealed neighbors this flag satisfies
+                const neighbors = this.getNeighbors(x, y);
+                let satisfiesCount = 0;
+                let totalRequirements = 0;
+                
+                for (const n of neighbors) {
+                    const nc = this.board.grid[n.y][n.x];
+                    if (!nc.isRevealed || nc.isMine) continue;
+                    
+                    totalRequirements++;
+                    const neighborFlags = this.getNeighbors(n.x, n.y).filter(nn => 
+                        this.board.grid[nn.y][nn.x].isFlagged
+                    ).length;
+                    
+                    if (neighborFlags <= nc.neighborCount) {
+                        satisfiesCount++;
+                    }
+                }
+                
+                // If this flag doesn't help any revealed cells, it might be wrong
+                if (totalRequirements > 0 && satisfiesCount === 0) {
+                    return { x, y };
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    // Remove a flag
+    removeFlag(x, y) {
+        if (!this.board || !this.board.grid) return;
+        const cell = this.board.grid[y][x];
+        if (cell.isFlagged) {
+            cell.isFlagged = false;
+            this.board.render();
+            console.log('[BotAI] Removed flag at', x, y);
+        }
+    }
+    
     // Find cells that are 100% definitely mines
     findKnownMines() {
         const knownMines = new Set();
@@ -404,11 +520,58 @@ export class BotAI {
         return array[Math.floor(Math.random() * array.length)];
     }
     
-        canUsePower(power) {
+    canUsePower(power) {
         const cost = this.game.CONFIG?.POWER_COSTS?.[power] || 999;
         const botScore = this.game.opponentScore || 0;
         const usesLeft = this.game.botPowerUsesLeft?.[power] || 0;
         return botScore >= cost && usesLeft > 0;
+    }
+    
+    // Strategically consider using a power
+    considerUsingPower() {
+        if (!this.game || !this.game.CONFIG) return null;
+        
+        const botScore = this.game.opponentScore || 0;
+        const playerScore = this.game.score || 0;
+        const timeRemaining = this.game.matchDuration - (Date.now() - this.game.matchStartTime);
+        const timeRemainingPercent = timeRemaining / this.game.matchDuration;
+        
+        // Strategic decisions:
+        
+        // 1. Use FREEZE if player is ahead and time is running out
+        if (playerScore > botScore + 30 && timeRemainingPercent < 0.5) {
+            if (this.canUsePower('freeze')) {
+                this.game.useBotPower('freeze', this.game.CONFIG.POWER_COSTS.freeze);
+                return 'freeze';
+            }
+        }
+        
+        // 2. Use SHIELD if bot is ahead and wants to protect lead
+        if (botScore > playerScore && timeRemainingPercent < 0.3) {
+            if (this.canUsePower('shield') && !this.game.opponentHasShield) {
+                this.game.useBotPower('shield', this.game.CONFIG.POWER_COSTS.shield);
+                return 'shield';
+            }
+        }
+        
+        // 3. Use RADAR when stuck (no safe moves)
+        const safeCells = this.findGuaranteedSafeCells();
+        if (safeCells.length === 0 && botScore >= 40) {
+            if (this.canUsePower('radar')) {
+                this.game.useBotPower('radar', this.game.CONFIG.POWER_COSTS.radar);
+                return 'radar';
+            }
+        }
+        
+        // 4. Use SAFEBURST early for quick points
+        if (timeRemainingPercent > 0.7 && botScore >= 50) {
+            if (this.canUsePower('safeburst')) {
+                this.game.useBotPower('safeburst', this.game.CONFIG.POWER_COSTS.safeburst);
+                return 'safeburst';
+            }
+        }
+        
+        return null;
     }
     
     // Called when player freezes the bot

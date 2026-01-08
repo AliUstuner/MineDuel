@@ -1624,17 +1624,21 @@ class GameClient {
     checkPlayerWinCondition() {
         if (this.gameEnded) return;
         
-        // Must have 3 or fewer mine hits to win instantly
-        if (this.mineHitCount > 3) {
-            console.log(`[WIN] Too many mine hits: ${this.mineHitCount}`);
-            return; // Too many mine hits, must wait for timer
-        }
-        
-        // Check if board is completed (all safe cells revealed AND all mines flagged)
+        // Check if board is completed (all safe cells revealed)
         if (this.playerBoard.checkBoardCompleted()) {
             console.log('[WIN] Player completed board!');
-            this.showNotification('🎉 Tahtayı tamamladın!', 'success');
-            this.endGame(true);
+            
+            // Player can only win instantly if 3 or fewer mine hits
+            if (this.mineHitCount <= 3) {
+                console.log('[WIN] Player wins with', this.mineHitCount, 'mine hits');
+                this.showNotification('🎉 Tahtayı tamamladın!', 'success');
+                this.endGame(true);
+            } else {
+                console.log('[WIN] Player completed board but hit', this.mineHitCount, 'mines - waiting for timer');
+                // Player completed board but hit >3 mines
+                // Wait for timer, highest score wins
+                this.showNotification('Tahtayı tamamladın! En yüksek skor kazanır.', 'info');
+            }
         }
     }
 
@@ -2330,20 +2334,26 @@ class GameClient {
     checkBotWinCondition() {
         if (this.gameEnded) return;
         
-        // Must have 3 or fewer mine hits to win instantly
-        if (this.opponentMineHitCount > 3) {
-            console.log(`[BOT WIN] Too many mine hits: ${this.opponentMineHitCount}`);
-            return; // Too many mine hits, must wait for timer
-        }
-        
         // Check if bot's board is completed
         if (this.botBoard && this.botBoard.checkBoardCompleted()) {
             console.log('[BOT WIN] Bot completed board!');
-            this.bot?.stop();
-            this.opponentCompletedBoard = true;
-            setTimeout(() => {
-                this.endGame(false); // Bot completed board, player loses
-            }, 500);
+            
+            // Bot can only win instantly if 3 or fewer mine hits
+            if (this.opponentMineHitCount <= 3) {
+                console.log('[BOT WIN] Bot wins with', this.opponentMineHitCount, 'mine hits');
+                this.bot?.stop();
+                this.opponentCompletedBoard = true;
+                setTimeout(() => {
+                    this.endGame(false); // Bot wins
+                }, 500);
+            } else {
+                console.log('[BOT WIN] Bot completed board but hit', this.opponentMineHitCount, 'mines - waiting for timer');
+                // Bot completed board but hit >3 mines
+                // Stop playing and wait for timer
+                this.bot?.stop();
+                this.opponentCompletedBoard = true;
+                this.showNotification('Bot tahtayı tamamladı! En yüksek skor kazanır.', 'info');
+            }
         }
     }
     
