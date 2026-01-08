@@ -974,6 +974,11 @@ class GameClient {
     }
 
     async cancelSearch() {
+        // Immediately update UI for faster feedback
+        this.stopSearchTimer();
+        this.showScreen('menu');
+        
+        // Then cleanup in background
         this.stopMatchPolling();
         
         if (this.matchmakingChannel) {
@@ -984,10 +989,9 @@ class GameClient {
         const userId = this.odaUserId || this.user?.id || 'guest';
         try {
             await SupabaseClient.leaveMatchmaking(userId);
-        } catch (e) {}
-        
-        this.stopSearchTimer();
-        this.showScreen('menu');
+        } catch (e) {
+            // Silent fail - user already returned to menu
+        }
     }
 
     startSearchTimer() {
@@ -1441,7 +1445,7 @@ class GameClient {
     
     handleMobileTap(e) {
         if (this.isFrozen && Date.now() < this.frozenUntil) {
-            this.showNotification('You are frozen!', 'error');
+            this.showNotification('Donmuş durumdasınız!', 'error');
             return;
         }
         
@@ -1459,6 +1463,12 @@ class GameClient {
     }
     
     showMobileMenu() {
+        // Check freeze status before showing menu
+        if (this.isFrozen && Date.now() < this.frozenUntil) {
+            this.showNotification('Donmuş durumdasınız!', 'error');
+            return;
+        }
+        
         if (!this.mobileActionMenu) return;
         this.mobileActionMenu.classList.remove('hidden');
         
@@ -1503,6 +1513,13 @@ class GameClient {
     }
     
     mobileDigAction() {
+        // Check freeze status
+        if (this.isFrozen && Date.now() < this.frozenUntil) {
+            this.showNotification('Donmuş durumdasınız!', 'error');
+            this.hideMobileMenu();
+            return;
+        }
+        
         if (!this.selectedCell) return;
         
         const cell = this.selectedCell;
@@ -1579,6 +1596,13 @@ class GameClient {
     }
     
     mobileFlagAction() {
+        // Check freeze status
+        if (this.isFrozen && Date.now() < this.frozenUntil) {
+            this.showNotification('Donmuş durumdasınız!', 'error');
+            this.hideMobileMenu();
+            return;
+        }
+        
         if (!this.selectedCell) return;
         
         const cell = this.selectedCell;
@@ -1599,6 +1623,11 @@ class GameClient {
     }
 
     handleOpponentMove(data) {
+        // Verify this is not from ourselves (for same-name players)
+        if (data.playerId && data.playerId === this.odaUserId) {
+            return; // Ignore our own moves
+        }
+        
         this.opponentScore = data.score;
         this.updateScore();
         
@@ -1653,10 +1682,14 @@ class GameClient {
 
     broadcastMove(data) {
         if (this.gameChannel) {
+            // Add player ID to distinguish same-name players
             this.gameChannel.send({
                 type: 'broadcast',
                 event: 'move',
-                payload: data
+                payload: {
+                    ...data,
+                    playerId: this.odaUserId
+                }
             });
         }
     }
@@ -1666,12 +1699,22 @@ class GameClient {
             this.gameChannel.send({
                 type: 'broadcast',
                 event: 'flag',
-                payload: { x, y, isFlagged }
+                payload: { 
+                    x, 
+                    y, 
+                    isFlagged,
+                    playerId: this.odaUserId
+                }
             });
         }
     }
     
     handleOpponentFlag(data) {
+        // Verify this is not from ourselves
+        if (data.playerId && data.playerId === this.odaUserId) {
+            return;
+        }
+        
         if (this.opponentBoard && this.opponentBoard.grid[data.y] && this.opponentBoard.grid[data.y][data.x]) {
             this.opponentBoard.grid[data.y][data.x].isFlagged = data.isFlagged;
             this.opponentBoard.render();
@@ -1689,6 +1732,12 @@ class GameClient {
     }
 
     usePower(power, cost) {
+        // Check if frozen
+        if (this.isFrozen && Date.now() < this.frozenUntil) {
+            this.showNotification('Dondurulduğunuz için güç kullanamazsınız!', 'error');
+            return;
+        }
+        
         // Check if power uses left
         if (!this.powerUsesLeft || this.powerUsesLeft[power] <= 0) {
             this.showNotification(`${power.toUpperCase()} hakkın bitti!`, 'error');
