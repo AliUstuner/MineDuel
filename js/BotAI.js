@@ -41,18 +41,29 @@ export class BotAI {
     }
 
     start(board, gridSize) {
+        console.log('[BotAI] Starting bot...', { board: board ? 'OK' : 'NULL', gridSize });
+        
         this.board = board;
         this.gridSize = gridSize;
         this.isActive = true;
+        this.isThinking = false;
+        
+        if (!this.board) {
+            console.error('[BotAI] Board is null, cannot start!');
+            return;
+        }
         
         // Wait a bit before first move
         setTimeout(() => {
+            console.log('[BotAI] Making first move...');
             this.makeMove();
         }, this.getRandomDelay());
     }
 
     stop() {
+        console.log('[BotAI] Stopping bot...');
         this.isActive = false;
+        this.isThinking = false;
         if (this.moveInterval) {
             clearTimeout(this.moveInterval);
             this.moveInterval = null;
@@ -65,17 +76,29 @@ export class BotAI {
     }
 
     async makeMove() {
-        if (!this.isActive || this.isThinking) return;
+        console.log('[BotAI] makeMove called', { isActive: this.isActive, isThinking: this.isThinking });
+        
+        if (!this.isActive || this.isThinking) {
+            console.log('[BotAI] Skipping move - not active or already thinking');
+            return;
+        }
+        
+        // Check if board exists
+        if (!this.board || !this.board.grid) {
+            console.error('[BotAI] Board or grid is null!');
+            return;
+        }
         
         // Check if game ended
         if (this.game.gameEnded) {
+            console.log('[BotAI] Game ended, stopping bot');
             this.stop();
             return;
         }
         
         // Check if bot is frozen
         if (this.isFrozen && Date.now() < this.frozenUntil) {
-            // Wait until unfrozen, then try again
+            console.log('[BotAI] Bot is frozen, waiting...');
             const waitTime = this.frozenUntil - Date.now();
             this.moveInterval = setTimeout(() => {
                 this.makeMove();
@@ -96,22 +119,34 @@ export class BotAI {
                 return;
             }
 
+            let actionTaken = false;
+            
             // Decide: use power, flag a mine, or make move?
             if (Math.random() < this.powerUsageChance && this.shouldUsePower()) {
+                console.log('[BotAI] Using power...');
                 this.usePowerRandomly();
+                actionTaken = true;
             } else {
                 // Try to flag definite mines first
                 const definiteMinesToFlag = this.findDefiniteMines();
                 if (definiteMinesToFlag.length > 0 && Math.random() > 0.3) {
                     const mine = this.pickRandom(definiteMinesToFlag);
                     if (mine) {
+                        console.log('[BotAI] Flagging mine at', mine.x, mine.y);
                         this.game.makeBotFlag(mine.x, mine.y);
+                        actionTaken = true;
                     }
-                } else {
+                }
+                
+                if (!actionTaken) {
                     // Otherwise reveal safe cells
                     const move = this.findBestMove();
                     if (move) {
+                        console.log('[BotAI] Revealing cell at', move.x, move.y);
                         this.game.makeBotMove(move.x, move.y);
+                        actionTaken = true;
+                    } else {
+                        console.log('[BotAI] No valid move found!');
                     }
                 }
             }

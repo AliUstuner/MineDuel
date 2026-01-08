@@ -441,24 +441,35 @@ class BoardRenderer {
         if (!this.mines || this.mines.length === 0) return false;
         
         const totalCells = this.gridSize * this.gridSize;
-        const safeCells = totalCells - this.mines.length;
+        const mineCount = this.mines.length;
+        const safeCells = totalCells - mineCount;
         let revealedSafeCells = 0;
         
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.grid[y][x];
+                // Only count revealed cells that are NOT mines
                 if (cell.isRevealed && !cell.isMine) {
                     revealedSafeCells++;
                 }
             }
         }
         
-        return revealedSafeCells >= safeCells;
+        console.log(`[WIN CHECK] Safe cells: ${revealedSafeCells}/${safeCells}`);
+        
+        // Must reveal ALL safe cells (exactly equal)
+        return revealedSafeCells === safeCells;
     }
     
-    // Check if board is completed (all safe cells revealed OR all mines correctly flagged)
+    // Check if board is completed (all safe cells revealed AND all mines correctly flagged)
     checkBoardCompleted() {
-        return this.checkAllMinesFlagged() || this.checkAllSafeCellsRevealed();
+        const allSafeRevealed = this.checkAllSafeCellsRevealed();
+        const allMinesFlagged = this.checkAllMinesFlagged();
+        
+        console.log(`[WIN CHECK] All safe revealed: ${allSafeRevealed}, All mines flagged: ${allMinesFlagged}`);
+        
+        // Win condition: ALL safe cells revealed AND ALL mines flagged correctly
+        return allSafeRevealed && allMinesFlagged;
     }
 
     render() {
@@ -935,6 +946,8 @@ class GameClient {
     }
 
     startBotGame() {
+        console.log('[BOT] Starting bot game...');
+        
         // Stop any existing bot first
         if (this.bot) {
             this.bot.stop();
@@ -952,23 +965,39 @@ class GameClient {
         // Reset bot-related state
         this.opponentCompletedBoard = false;
         this.botBoard = null;
+        this.opponentMineHitCount = 0;
+        
+        const gridSize = CONFIG.DIFFICULTIES[difficulty].gridSize;
+        const mineCount = CONFIG.DIFFICULTIES[difficulty].mineCount;
+        
+        console.log(`[BOT] Difficulty: ${difficulty}, Grid: ${gridSize}x${gridSize}, Mines: ${mineCount}`);
         
         this.startGame({
             gameId: this.gameId,
             opponent: '🤖 Bot',
             difficulty: difficulty,
-            gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
-            mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
+            gridSize: gridSize,
+            mineCount: mineCount,
             myName: playerName,
             isOffline: true
         });
         
-        // Start bot AI after boards are ready
+        // Start bot AI after boards are ready - use longer delay to ensure everything is initialized
         setTimeout(() => {
-            this.bot = new BotAI(this, difficulty);
+            if (!this.opponentBoard) {
+                console.error('[BOT] opponentBoard not ready!');
+                return;
+            }
+            
             this.botBoard = this.opponentBoard;
-            this.bot.start(this.botBoard, CONFIG.DIFFICULTIES[difficulty].gridSize);
-        }, 1000);
+            this.bot = new BotAI(this, difficulty);
+            
+            console.log('[BOT] Bot initialized, starting AI...');
+            console.log('[BOT] botBoard:', this.botBoard ? 'OK' : 'NULL');
+            console.log('[BOT] bot:', this.bot ? 'OK' : 'NULL');
+            
+            this.bot.start(this.botBoard, gridSize);
+        }, 1500);
     }
 
     startMatchPolling(odaUserId, difficulty) {
@@ -1557,11 +1586,13 @@ class GameClient {
         
         // Must have 3 or fewer mine hits to win instantly
         if (this.mineHitCount > 3) {
+            console.log(`[WIN] Too many mine hits: ${this.mineHitCount}`);
             return; // Too many mine hits, must wait for timer
         }
         
-        // Check if board is completed (all safe cells revealed OR all mines flagged)
+        // Check if board is completed (all safe cells revealed AND all mines flagged)
         if (this.playerBoard.checkBoardCompleted()) {
+            console.log('[WIN] Player completed board!');
             this.showNotification('🎉 Tahtayı tamamladın!', 'success');
             this.endGame(true);
         }
@@ -2169,16 +2200,35 @@ class GameClient {
     }
     
     makeBotMove(x, y) {
-        if (!this.isBotMode || !this.botBoard) return;
+        console.log('[BOT MOVE] makeBotMove called', { x, y, isBotMode: this.isBotMode, botBoard: this.botBoard ? 'OK' : 'NULL' });
+        
+        if (!this.isBotMode || !this.botBoard) {
+            console.error('[BOT MOVE] Cannot make move - isBotMode:', this.isBotMode, 'botBoard:', this.botBoard);
+            return;
+        }
+        
+        if (this.gameEnded) {
+            console.log('[BOT MOVE] Game already ended');
+            return;
+        }
+        
+        // Check bounds
+        if (x < 0 || y < 0 || x >= this.botBoard.gridSize || y >= this.botBoard.gridSize) {
+            console.error('[BOT MOVE] Out of bounds:', x, y);
+            return;
+        }
         
         // Generate bot mines on first move if needed
         if (!this.botBoard.mines || this.botBoard.mines.length === 0) {
             const mineCount = this.pendingMineCount || 20;
+            console.log('[BOT MOVE] Generating mines for bot board:', mineCount);
             this.botBoard.generateMines(mineCount, x, y);
         }
         
         const revealed = this.botBoard.revealCell(x, y);
         this.botBoard.render();
+        
+        console.log('[BOT MOVE] Revealed cells:', revealed?.length || 0);
         
         // Calculate bot score - ONLY for explicitly clicked cell, not flood-filled ones
         let points = 0;
@@ -2244,11 +2294,13 @@ class GameClient {
         
         // Must have 3 or fewer mine hits to win instantly
         if (this.opponentMineHitCount > 3) {
+            console.log(`[BOT WIN] Too many mine hits: ${this.opponentMineHitCount}`);
             return; // Too many mine hits, must wait for timer
         }
         
         // Check if bot's board is completed
-        if (this.botBoard.checkBoardCompleted()) {
+        if (this.botBoard && this.botBoard.checkBoardCompleted()) {
+            console.log('[BOT WIN] Bot completed board!');
             this.bot?.stop();
             this.opponentCompletedBoard = true;
             setTimeout(() => {
