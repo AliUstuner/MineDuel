@@ -461,15 +461,14 @@ class BoardRenderer {
         return revealedSafeCells === safeCells;
     }
     
-    // Check if board is completed (all safe cells revealed AND all mines correctly flagged)
+    // Check if board is completed (all safe cells revealed)
     checkBoardCompleted() {
         const allSafeRevealed = this.checkAllSafeCellsRevealed();
-        const allMinesFlagged = this.checkAllMinesFlagged();
         
-        console.log(`[WIN CHECK] All safe revealed: ${allSafeRevealed}, All mines flagged: ${allMinesFlagged}`);
+        console.log(`[WIN CHECK] All safe revealed: ${allSafeRevealed}`);
         
-        // Win condition: ALL safe cells revealed AND ALL mines flagged correctly
-        return allSafeRevealed && allMinesFlagged;
+        // Win condition: ALL safe cells revealed (flags not required)
+        return allSafeRevealed;
     }
 
     render() {
@@ -2230,25 +2229,23 @@ class GameClient {
         
         console.log('[BOT MOVE] Revealed cells:', revealed?.length || 0);
         
-        // Calculate bot score - ONLY for explicitly clicked cell, not flood-filled ones
+        // Calculate bot score - same as player: +5 for each revealed safe cell, -30 for mine
         let points = 0;
         let hitMine = false;
         
-        // Get the clicked cell
-        const clickedCell = this.botBoard.grid[y][x];
-        
-        if (clickedCell.isMine) {
-            hitMine = true;
-            points = -30;
-        } else {
-            // Only give points for the clicked cell
-            // Neighbor count affects score slightly
-            if (clickedCell.neighborCount === 0) {
-                points = 3; // Less points for easy 0 cells
-            } else {
-                points = 5; // Normal points
-            }
+        // Count all revealed cells (like player scoring)
+        if (revealed && revealed.length > 0) {
+            revealed.forEach(c => {
+                if (c.isMine) {
+                    hitMine = true;
+                    points -= 30;
+                } else {
+                    points += 5;
+                }
+            });
         }
+        
+        console.log('[BOT MOVE] Points:', points, 'Hit mine:', hitMine);
         
         this.opponentScore = Math.max(0, this.opponentScore + points);
         this.updateScore();
