@@ -1777,16 +1777,21 @@ class GameClient {
                 break;
                 
             case 'safeburst':
-                // Reveal some safe cells
-                const safeCells = [];
-                for (let y = 0; y < this.playerBoard.gridSize && safeCells.length < 5; y++) {
-                    for (let x = 0; x < this.playerBoard.gridSize && safeCells.length < 5; x++) {
+                // Find all safe unrevealed cells
+                const allSafeCells = [];
+                for (let y = 0; y < this.playerBoard.gridSize; y++) {
+                    for (let x = 0; x < this.playerBoard.gridSize; x++) {
                         const cell = this.playerBoard.grid[y][x];
                         if (!cell.isRevealed && !cell.isMine) {
-                            safeCells.push({ x, y });
+                            allSafeCells.push({ x, y });
                         }
                     }
                 }
+                
+                // Shuffle and pick random 5 cells
+                const shuffled = allSafeCells.sort(() => Math.random() - 0.5);
+                const safeCells = shuffled.slice(0, 5);
+                
                 let burstPoints = 0;
                 safeCells.forEach(c => {
                     const revealed = this.playerBoard.revealCell(c.x, c.y);
@@ -1798,6 +1803,9 @@ class GameClient {
                 this.score += burstPoints;
                 this.updateScore();
                 this.showPowerNotificationSimple('safeburst', `+${burstPoints} puan kazanıldı!`);
+                
+                // Broadcast burst usage with revealed cells
+                this.broadcastPower('safeburst', { points: burstPoints, revealed: safeCells });
                 break;
                 
             case 'shield':
