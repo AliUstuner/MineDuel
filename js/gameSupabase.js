@@ -1181,6 +1181,14 @@ class GameClient {
     }
 
     startGame(config) {
+        console.log('[GAME] startGame called with config:', {
+            gameId: config.gameId,
+            opponent: config.opponent,
+            difficulty: config.difficulty,
+            isOffline: config.isOffline,
+            isBotMode: this.isBotMode
+        });
+        
         this.gameId = config.gameId;
         this.opponentName = config.opponent;
         this.myName = config.myName || this.playerNameInput?.value || 'Player';
@@ -1631,11 +1639,24 @@ class GameClient {
         if (this.playerBoard.checkBoardCompleted()) {
             console.log('[WIN] Player completed board!');
             
-            // Player can only win instantly if 3 or fewer mine hits
+            // Player can only win instantly if 3 or fewer mine hits AND higher score
             if (this.mineHitCount <= 3) {
-                console.log('[WIN] Player wins with', this.mineHitCount, 'mine hits');
-                this.showNotification('🎉 Tahtayı tamamladın!', 'success');
-                this.endGame(true);
+                // In bot mode, check scores
+                if (this.isBotMode) {
+                    if (this.score > this.opponentScore) {
+                        console.log('[WIN] Player wins with higher score:', this.score, 'vs', this.opponentScore);
+                        this.showNotification('🎉 Tahtayı tamamladın!', 'success');
+                        this.endGame(true);
+                    } else {
+                        console.log('[WIN] Player completed but bot has higher score - waiting');
+                        this.showNotification('Tahtayı tamamladın! En yüksek skor kazanır.', 'info');
+                    }
+                } else {
+                    // Online mode - instant win
+                    console.log('[WIN] Player wins with', this.mineHitCount, 'mine hits');
+                    this.showNotification('🎉 Tahtayı tamamladın!', 'success');
+                    this.endGame(true);
+                }
             } else {
                 console.log('[WIN] Player completed board but hit', this.mineHitCount, 'mines - waiting for timer');
                 // Player completed board but hit >3 mines
@@ -2341,14 +2362,22 @@ class GameClient {
         if (this.botBoard && this.botBoard.checkBoardCompleted()) {
             console.log('[BOT WIN] Bot completed board!');
             
-            // Bot can only win instantly if 3 or fewer mine hits
+            // Bot can only win instantly if 3 or fewer mine hits AND higher score
             if (this.opponentMineHitCount <= 3) {
-                console.log('[BOT WIN] Bot wins with', this.opponentMineHitCount, 'mine hits');
-                this.bot?.stop();
-                this.opponentCompletedBoard = true;
-                setTimeout(() => {
-                    this.endGame(false); // Bot wins
-                }, 500);
+                // Check scores
+                if (this.opponentScore > this.score) {
+                    console.log('[BOT WIN] Bot wins with higher score:', this.opponentScore, 'vs', this.score);
+                    this.bot?.stop();
+                    this.opponentCompletedBoard = true;
+                    setTimeout(() => {
+                        this.endGame(false); // Bot wins
+                    }, 500);
+                } else {
+                    console.log('[BOT WIN] Bot completed but player has higher score - waiting');
+                    this.bot?.stop();
+                    this.opponentCompletedBoard = true;
+                    this.showNotification('Bot tahtayı tamamladı! En yüksek skor kazanır.', 'info');
+                }
             } else {
                 console.log('[BOT WIN] Bot completed board but hit', this.opponentMineHitCount, 'mines - waiting for timer');
                 // Bot completed board but hit >3 mines
@@ -2381,12 +2410,15 @@ class GameClient {
         }
         
         console.log('[BOT POWER] Using power:', power);
+        console.log('[BOT POWER] Before deduction - botPowerUsesLeft:', JSON.stringify(this.botPowerUsesLeft));
         
         // Deduct cost from bot's score
         this.opponentScore -= cost;
         
         // Deduct usage from bot's power uses
         this.botPowerUsesLeft[power]--;
+        
+        console.log('[BOT POWER] After deduction - botPowerUsesLeft:', JSON.stringify(this.botPowerUsesLeft));
         
         this.updateScore();
         
