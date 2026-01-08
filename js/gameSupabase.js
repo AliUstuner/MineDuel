@@ -411,6 +411,30 @@ class BoardRenderer {
         }
         return count;
     }
+    
+    // Check if all mines are correctly flagged (and no wrong flags)
+    checkAllMinesFlagged() {
+        if (!this.mines || this.mines.length === 0) return false;
+        
+        let correctFlags = 0;
+        let wrongFlags = 0;
+        
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.grid[y][x];
+                if (cell.isFlagged) {
+                    if (cell.isMine) {
+                        correctFlags++;
+                    } else {
+                        wrongFlags++;
+                    }
+                }
+            }
+        }
+        
+        // Win if all mines flagged AND no wrong flags
+        return correctFlags === this.mines.length && wrongFlags === 0;
+    }
 
     render() {
         const ctx = this.ctx;
@@ -1383,10 +1407,7 @@ class GameClient {
         // Broadcast move
         this.broadcastMove({ x: cell.x, y: cell.y, revealed, score: this.score });
         
-        // Check win condition
-        if (this.playerBoard.getUnrevealedCount() === 0) {
-            this.endGame(true);
-        }
+        // Note: Win by flagging all mines, not by revealing all cells
     }
 
     handleCellClick(e) {
@@ -1469,10 +1490,7 @@ class GameClient {
         // Broadcast move
         this.broadcastMove({ x: cell.x, y: cell.y, revealed, score: this.score });
         
-        // Check win condition
-        if (this.playerBoard.getUnrevealedCount() === 0) {
-            this.endGame(true);
-        }
+        // Note: Win by flagging all mines, not by revealing all cells
     }
 
     handleRightClick(e) {
@@ -1488,6 +1506,12 @@ class GameClient {
         
         // Broadcast flag to opponent
         this.broadcastFlag(cell.x, cell.y, cellData.isFlagged);
+        
+        // Check win condition - all mines flagged correctly
+        if (this.playerBoard.checkAllMinesFlagged()) {
+            this.showNotification('🎉 Tüm mayınları buldun!', 'success');
+            this.endGame(true);
+        }
     }
 
     // ==================== MOBILE SUPPORT ====================
@@ -1637,9 +1661,7 @@ class GameClient {
         
         this.broadcastMove({ x: cell.x, y: cell.y, revealed, score: this.score });
         
-        if (this.playerBoard.getUnrevealedCount() === 0) {
-            this.endGame(true);
-        }
+        // Note: Win by flagging all mines, not by revealing all cells
         
         this.selectedCell = null;
     }
@@ -1664,6 +1686,12 @@ class GameClient {
             
             // Broadcast flag to opponent
             this.broadcastFlag(cell.x, cell.y, cellData.isFlagged);
+            
+            // Check win condition - all mines flagged correctly
+            if (this.playerBoard.checkAllMinesFlagged()) {
+                this.showNotification('🎉 Tüm mayınları buldun!', 'success');
+                this.endGame(true);
+            }
         }
         
         this.removeHighlight();
@@ -2129,13 +2157,43 @@ class GameClient {
             this.audio.playReveal(revealed.length);
         }
         
-        // Check if bot completed board
-        if (this.botBoard.getUnrevealedCount() === 0) {
+        // Check if bot completed board (flagged all mines)
+        if (this.botBoard.checkAllMinesFlagged()) {
             this.bot?.stop();
             // Mark that opponent (bot) completed the board
             this.opponentCompletedBoard = true;
             setTimeout(() => {
-                this.endGame(false); // Bot completed, player loses
+                this.endGame(false); // Bot found all mines, player loses
+            }, 500);
+        }
+    }
+    
+    makeBotFlag(x, y) {
+        if (!this.isBotMode || !this.botBoard || this.gameEnded) return;
+        
+        // Check if bot is frozen
+        if (this.opponentFreezeUntil && Date.now() < this.opponentFreezeUntil) {
+            return;
+        }
+        
+        const cell = this.botBoard.grid[y][x];
+        
+        // Can only flag unrevealed, unflagged cells
+        if (cell.isRevealed || cell.isFlagged) return;
+        
+        // Flag the cell
+        cell.isFlagged = true;
+        this.botBoard.render();
+        
+        // Play flag sound
+        this.audio.playFlag();
+        
+        // Check if bot won by flagging all mines
+        if (this.botBoard.checkAllMinesFlagged()) {
+            this.bot?.stop();
+            this.opponentCompletedBoard = true;
+            setTimeout(() => {
+                this.endGame(false); // Bot found all mines, player loses
             }, 500);
         }
     }

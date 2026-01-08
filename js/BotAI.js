@@ -88,13 +88,21 @@ export class BotAI {
             return;
         }
 
-        // Decide: use power or make move?
+        // Decide: use power, flag a mine, or make move?
         if (Math.random() < this.powerUsageChance && this.shouldUsePower()) {
             this.usePowerRandomly();
         } else {
-            const move = this.findBestMove();
-            if (move) {
-                this.game.makeBotMove(move.x, move.y);
+            // Try to flag definite mines first
+            const definiteMinesToFlag = this.findDefiniteMines();
+            if (definiteMinesToFlag.length > 0 && Math.random() > 0.3) {
+                const mine = this.pickRandom(definiteMinesToFlag);
+                this.game.makeBotFlag(mine.x, mine.y);
+            } else {
+                // Otherwise reveal safe cells
+                const move = this.findBestMove();
+                if (move) {
+                    this.game.makeBotMove(move.x, move.y);
+                }
             }
         }
 
@@ -107,6 +115,50 @@ export class BotAI {
                 this.makeMove();
             }, this.getRandomDelay());
         }
+    }
+    
+    // Find cells that are definitely mines based on number analysis
+    findDefiniteMines() {
+        const definiteMines = [];
+        
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.board.grid[y][x];
+                
+                // Skip if not revealed or no neighbors
+                if (!cell.isRevealed || cell.isMine || cell.neighborCount === 0) continue;
+                
+                // Get unrevealed and unflagged neighbors
+                const neighbors = this.getNeighbors(x, y);
+                const unrevealedUnflagged = neighbors.filter(n => {
+                    const nc = this.board.grid[n.y][n.x];
+                    return !nc.isRevealed && !nc.isFlagged;
+                });
+                const flaggedCount = neighbors.filter(n => 
+                    this.board.grid[n.y][n.x].isFlagged
+                ).length;
+                
+                // If remaining unrevealed count equals remaining mines needed
+                const remainingMines = cell.neighborCount - flaggedCount;
+                if (remainingMines > 0 && unrevealedUnflagged.length === remainingMines) {
+                    // All these cells are mines!
+                    definiteMines.push(...unrevealedUnflagged);
+                }
+            }
+        }
+        
+        // Remove duplicates
+        const unique = [];
+        const seen = new Set();
+        for (const m of definiteMines) {
+            const key = `${m.x},${m.y}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                unique.push(m);
+            }
+        }
+        
+        return unique;
     }
 
     findBestMove() {
