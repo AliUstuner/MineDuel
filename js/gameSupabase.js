@@ -2089,18 +2089,25 @@ class GameClient {
         const revealed = this.botBoard.revealCell(x, y);
         this.botBoard.render();
         
-        // Calculate bot score
+        // Calculate bot score - ONLY for explicitly clicked cell, not flood-filled ones
         let points = 0;
         let hitMine = false;
         
-        revealed.forEach(c => {
-            if (c.isMine) {
-                hitMine = true;
-                points -= 30;
+        // Get the clicked cell
+        const clickedCell = this.botBoard.grid[y][x];
+        
+        if (clickedCell.isMine) {
+            hitMine = true;
+            points = -30;
+        } else {
+            // Only give points for the clicked cell
+            // Neighbor count affects score slightly
+            if (clickedCell.neighborCount === 0) {
+                points = 3; // Less points for easy 0 cells
             } else {
-                points += 5;
+                points = 5; // Normal points
             }
-        });
+        }
         
         this.opponentScore = Math.max(0, this.opponentScore + points);
         this.updateScore();

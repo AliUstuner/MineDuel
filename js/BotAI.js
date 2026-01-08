@@ -17,13 +17,13 @@ export class BotAI {
         // Random delay to simulate human thinking
         switch (this.difficulty) {
             case 'easy':
-                return { min: 1000, max: 2500 };
+                return { min: 1500, max: 3000 };
             case 'medium':
-                return { min: 600, max: 1500 };
+                return { min: 1000, max: 2000 };
             case 'hard':
-                return { min: 300, max: 800 };
+                return { min: 700, max: 1500 };
             default:
-                return { min: 600, max: 1500 };
+                return { min: 1000, max: 2000 };
         }
     }
 
