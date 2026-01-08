@@ -1,4 +1,4 @@
-// Bot AI for MineDuel - Simple Algorithm Based
+// Bot AI for MineDuel - Algorithm Based with Difficulty Levels
 export class BotAI {
     constructor(game, difficulty = 'medium') {
         this.game = game;
@@ -9,32 +9,55 @@ export class BotAI {
         this.isThinking = false;
         this.moveInterval = null;
         this.powerUsageChance = this.getPowerUsageChance();
+        this.mistakeChance = this.getMistakeChance();
         this.isFrozen = false;
         this.frozenUntil = 0;
+        
+        console.log(`[BotAI] Created with difficulty: ${difficulty}`);
     }
 
     getMoveDelay() {
-        // Random delay to simulate human thinking
+        // Random delay to simulate human thinking - lower = faster
         switch (this.difficulty) {
             case 'easy':
-                return { min: 1500, max: 3000 };
+                return { min: 2000, max: 4000 }; // Very slow
             case 'medium':
-                return { min: 1000, max: 2000 };
+                return { min: 1200, max: 2500 }; // Normal
             case 'hard':
-                return { min: 700, max: 1500 };
+                return { min: 600, max: 1200 }; // Fast
+            case 'expert':
+                return { min: 300, max: 700 }; // Very fast
             default:
-                return { min: 1000, max: 2000 };
+                return { min: 1200, max: 2500 };
         }
     }
 
     getPowerUsageChance() {
         switch (this.difficulty) {
             case 'easy':
-                return 0.1; // 10% chance
+                return 0.05; // 5% chance - rarely uses powers
             case 'medium':
-                return 0.2; // 20% chance
+                return 0.15; // 15% chance
             case 'hard':
-                return 0.3; // 30% chance
+                return 0.25; // 25% chance
+            case 'expert':
+                return 0.35; // 35% chance - uses powers often
+            default:
+                return 0.15;
+        }
+    }
+    
+    getMistakeChance() {
+        // Chance of making a random move instead of optimal move
+        switch (this.difficulty) {
+            case 'easy':
+                return 0.4; // 40% random moves
+            case 'medium':
+                return 0.2; // 20% random moves
+            case 'hard':
+                return 0.1; // 10% random moves
+            case 'expert':
+                return 0.02; // 2% random moves - almost perfect
             default:
                 return 0.2;
         }
@@ -210,6 +233,15 @@ export class BotAI {
     }
 
     findBestMove() {
+        // Mistake chance - sometimes make a random move instead of optimal
+        if (Math.random() < this.mistakeChance) {
+            const allUnrevealed = this.getAllUnrevealedCells();
+            if (allUnrevealed.length > 0) {
+                console.log('[BotAI] Making random move (mistake)');
+                return this.pickRandom(allUnrevealed);
+            }
+        }
+        
         // Strategy priority:
         // 1. Find guaranteed safe cells (from revealed numbers)
         // 2. Find corner/edge cells (statistically safer)

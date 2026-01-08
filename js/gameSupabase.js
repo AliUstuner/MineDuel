@@ -577,6 +577,7 @@ class GameClient {
         this.opponentId = null;
         this.opponentName = '';
         this.selectedDifficulty = 'medium';
+        this.selectedBotDifficulty = 'medium'; // Bot AI difficulty
         this.isHost = false;
         
         this.playerBoard = null;
@@ -692,9 +693,40 @@ class GameClient {
         this.findGameBtn?.addEventListener('click', () => this.findGame());
         this.cancelSearchBtn?.addEventListener('click', () => this.cancelSearch());
         
-        // Bot mode button
+        // Bot mode button - show difficulty selection
         const playWithBotBtn = document.getElementById('play-with-bot-btn');
-        playWithBotBtn?.addEventListener('click', () => this.startBotGame());
+        const botDifficultySection = document.getElementById('bot-difficulty-section');
+        const startBotGameBtn = document.getElementById('start-bot-game-btn');
+        const cancelBotBtn = document.getElementById('cancel-bot-btn');
+        
+        playWithBotBtn?.addEventListener('click', () => {
+            // Toggle bot difficulty section
+            botDifficultySection?.classList.toggle('hidden');
+            playWithBotBtn.classList.toggle('hidden');
+        });
+        
+        // Bot difficulty buttons
+        const botDiffButtons = document.querySelectorAll('.bot-diff-btn');
+        botDiffButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                botDiffButtons.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                this.selectedBotDifficulty = btn.dataset.botDifficulty;
+            });
+        });
+        
+        // Start bot game button
+        startBotGameBtn?.addEventListener('click', () => {
+            botDifficultySection?.classList.add('hidden');
+            playWithBotBtn?.classList.remove('hidden');
+            this.startBotGame();
+        });
+        
+        // Cancel bot selection
+        cancelBotBtn?.addEventListener('click', () => {
+            botDifficultySection?.classList.add('hidden');
+            playWithBotBtn?.classList.remove('hidden');
+        });
         
         this.difficultyButtons.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -954,10 +986,20 @@ class GameClient {
         }
         
         const playerName = this.playerNameInput?.value || 'Player' + Math.floor(Math.random() * 9999);
-        const difficulty = this.selectedDifficulty;
+        const gridDifficulty = this.selectedDifficulty; // Grid size difficulty
+        const botDifficulty = this.selectedBotDifficulty || 'medium'; // Bot AI difficulty
         
         this.isBotMode = true;
-        this.opponentName = '🤖 Bot';
+        
+        // Set bot name based on difficulty
+        const botNames = {
+            'easy': '🤖 Kolay Bot',
+            'medium': '🤖 Orta Bot',
+            'hard': '🤖 Zor Bot',
+            'expert': '💀 Uzman Bot'
+        };
+        this.opponentName = botNames[botDifficulty] || '🤖 Bot';
+        
         this.isHost = true;
         this.gameId = 'bot_' + Date.now();
         
@@ -966,15 +1008,15 @@ class GameClient {
         this.botBoard = null;
         this.opponentMineHitCount = 0;
         
-        const gridSize = CONFIG.DIFFICULTIES[difficulty].gridSize;
-        const mineCount = CONFIG.DIFFICULTIES[difficulty].mineCount;
+        const gridSize = CONFIG.DIFFICULTIES[gridDifficulty].gridSize;
+        const mineCount = CONFIG.DIFFICULTIES[gridDifficulty].mineCount;
         
-        console.log(`[BOT] Difficulty: ${difficulty}, Grid: ${gridSize}x${gridSize}, Mines: ${mineCount}`);
+        console.log(`[BOT] Grid: ${gridDifficulty} (${gridSize}x${gridSize}), Bot AI: ${botDifficulty}`);
         
         this.startGame({
             gameId: this.gameId,
-            opponent: '🤖 Bot',
-            difficulty: difficulty,
+            opponent: this.opponentName,
+            difficulty: gridDifficulty,
             gridSize: gridSize,
             mineCount: mineCount,
             myName: playerName,
@@ -989,11 +1031,10 @@ class GameClient {
             }
             
             this.botBoard = this.opponentBoard;
-            this.bot = new BotAI(this, difficulty);
+            this.bot = new BotAI(this, botDifficulty);
             
-            console.log('[BOT] Bot initialized, starting AI...');
+            console.log('[BOT] Bot initialized with difficulty:', botDifficulty);
             console.log('[BOT] botBoard:', this.botBoard ? 'OK' : 'NULL');
-            console.log('[BOT] bot:', this.bot ? 'OK' : 'NULL');
             
             this.bot.start(this.botBoard, gridSize);
         }, 1500);

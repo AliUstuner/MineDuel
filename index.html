@@ -70,6 +70,40 @@
                         <span class="btn-text">Play with Bot</span>
                     </button>
                     
+                    <!-- Bot Difficulty Selection (hidden by default) -->
+                    <div id="bot-difficulty-section" class="bot-difficulty-section hidden">
+                        <h3 class="bot-section-title">🤖 Bot Zorluğu Seç</h3>
+                        <div class="bot-difficulty-buttons">
+                            <button class="bot-diff-btn" data-bot-difficulty="easy">
+                                <span class="bot-diff-icon">🟢</span>
+                                <span class="bot-diff-name">Kolay</span>
+                                <span class="bot-diff-desc">Yavaş, hatalar yapar</span>
+                            </button>
+                            <button class="bot-diff-btn selected" data-bot-difficulty="medium">
+                                <span class="bot-diff-icon">🟡</span>
+                                <span class="bot-diff-name">Orta</span>
+                                <span class="bot-diff-desc">Dengeli oyun</span>
+                            </button>
+                            <button class="bot-diff-btn" data-bot-difficulty="hard">
+                                <span class="bot-diff-icon">🔴</span>
+                                <span class="bot-diff-name">Zor</span>
+                                <span class="bot-diff-desc">Hızlı, stratejik</span>
+                            </button>
+                            <button class="bot-diff-btn" data-bot-difficulty="expert">
+                                <span class="bot-diff-icon">💀</span>
+                                <span class="bot-diff-name">Uzman</span>
+                                <span class="bot-diff-desc">Çok hızlı, az hata</span>
+                            </button>
+                        </div>
+                        <button id="start-bot-game-btn" class="btn btn-primary">
+                            <span class="btn-icon">▶️</span>
+                            <span class="btn-text">Oyunu Başlat</span>
+                        </button>
+                        <button id="cancel-bot-btn" class="btn btn-secondary btn-small">
+                            İptal
+                        </button>
+                    </div>
+                    
                     <div class="menu-stats">
                         <div class="stat-item">
                             <span class="stat-icon">🎮</span>

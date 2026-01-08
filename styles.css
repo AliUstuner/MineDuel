@@ -787,6 +787,98 @@ body {
     text-transform: uppercase;
 }
 
+/* Bot Difficulty Section */
+.bot-difficulty-section {
+    width: 100%;
+    margin-top: 15px;
+    padding: 20px;
+    background: var(--card);
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.bot-difficulty-section.hidden {
+    display: none;
+}
+
+.bot-section-title {
+    text-align: center;
+    font-size: 18px;
+    margin-bottom: 15px;
+    color: var(--primary);
+}
+
+.bot-difficulty-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.bot-diff-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 15px 10px;
+    background: var(--card-light);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.bot-diff-btn:hover {
+    border-color: var(--primary);
+    transform: translateY(-2px);
+}
+
+.bot-diff-btn.selected {
+    border-color: var(--primary);
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), transparent);
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.3);
+}
+
+.bot-diff-icon {
+    font-size: 28px;
+}
+
+.bot-diff-name {
+    font-size: 16px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.bot-diff-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+#start-bot-game-btn {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+#cancel-bot-btn {
+    width: 100%;
+    padding: 8px;
+    font-size: 14px;
+}
+
 .power-buttons {
     display: flex;
     gap: 8px;
