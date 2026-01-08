@@ -9,6 +9,8 @@ export class BotAI {
         this.isThinking = false;
         this.moveInterval = null;
         this.powerUsageChance = this.getPowerUsageChance();
+        this.isFrozen = false;
+        this.frozenUntil = 0;
     }
 
     getMoveDelay() {
@@ -64,6 +66,16 @@ export class BotAI {
 
     async makeMove() {
         if (!this.isActive || this.isThinking) return;
+        
+        // Check if bot is frozen
+        if (this.isFrozen && Date.now() < this.frozenUntil) {
+            // Wait until unfrozen, then try again
+            const waitTime = this.frozenUntil - Date.now();
+            this.moveInterval = setTimeout(() => {
+                this.makeMove();
+            }, waitTime + 100);
+            return;
+        }
         
         this.isThinking = true;
         this.game.showBotThinking();
@@ -253,6 +265,7 @@ export class BotAI {
         if (this.canUsePower('radar')) availablePowers.push('radar');
         if (this.canUsePower('safeburst')) availablePowers.push('safeburst');
         if (this.canUsePower('shield')) availablePowers.push('shield');
+        if (this.canUsePower('freeze')) availablePowers.push('freeze');
 
         if (availablePowers.length === 0) return;
 
@@ -268,5 +281,36 @@ export class BotAI {
         const cost = this.game.CONFIG?.POWER_COSTS?.[power] || 999;
         const usesLeft = this.game.powerUsesLeft?.[power] || 0;
         return this.game.score >= cost && usesLeft > 0;
+    }
+    
+    freeze(duration = 5000) {
+        this.isFrozen = true;
+        this.frozenUntil = Date.now() + duration;
+        
+        // Show freeze indicator on opponent board
+        const opponentFrozen = document.getElementById('opponent-frozen');
+        const freezeTimer = document.getElementById('opponent-freeze-timer');
+        
+        if (opponentFrozen) {
+            opponentFrozen.classList.remove('hidden');
+        }
+        
+        // Update timer
+        const updateTimer = setInterval(() => {
+            const remaining = Math.max(0, this.frozenUntil - Date.now());
+            if (freezeTimer) {
+                freezeTimer.textContent = `${Math.ceil(remaining / 1000)}s`;
+            }
+            
+            if (remaining <= 0) {
+                clearInterval(updateTimer);
+                this.isFrozen = false;
+                if (opponentFrozen) {
+                    opponentFrozen.classList.add('hidden');
+                }
+                // Resume bot movement
+                this.makeMove();
+            }
+        }, 100);
     }
 }

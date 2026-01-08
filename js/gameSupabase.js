@@ -1870,16 +1870,24 @@ class GameClient {
             case 'freeze':
                 // Check if opponent has shield
                 if (this.opponentHasShield && Date.now() < this.opponentShieldUntil) {
-                    this.showNotification('❌ Rakip kalkanlı! Saldırı yapamassın!', 'error');
+                    this.showNotification('❌ Rakip kalkanlı! Saldırı yapamazsın!', 'error');
                     // Refund the cost
                     this.score += cost;
                     this.updateScore();
                     this.updatePowerButtons();
                     return;
                 }
-                this.broadcastPower('freeze', { duration: 5000 });
-                // Show freeze effect on opponent's board in my view
-                this.showOpponentFreezeEffect(5000);
+                
+                // If bot mode, freeze the bot directly
+                if (this.isBotMode && this.bot) {
+                    this.bot.freeze(5000);
+                    this.showNotification('❄️ Bot 5 saniye donduruldu!', 'success');
+                    this.showOpponentFreezeEffect(5000);
+                } else {
+                    // Normal PvP mode
+                    this.broadcastPower('freeze', { duration: 5000 });
+                    this.showOpponentFreezeEffect(5000);
+                }
                 break;
         }
     }
