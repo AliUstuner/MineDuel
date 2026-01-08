@@ -67,6 +67,12 @@ export class BotAI {
     async makeMove() {
         if (!this.isActive || this.isThinking) return;
         
+        // Check if game ended
+        if (this.game.gameEnded) {
+            this.stop();
+            return;
+        }
+        
         // Check if bot is frozen
         if (this.isFrozen && Date.now() < this.frozenUntil) {
             // Wait until unfrozen, then try again
@@ -80,37 +86,44 @@ export class BotAI {
         this.isThinking = true;
         this.game.showBotThinking();
 
-        // Wait for thinking animation
-        await new Promise(resolve => setTimeout(resolve, this.getRandomDelay()));
+        try {
+            // Wait for thinking animation
+            await new Promise(resolve => setTimeout(resolve, this.getRandomDelay()));
 
-        if (!this.isActive) {
-            this.isThinking = false;
-            return;
-        }
+            if (!this.isActive || this.game.gameEnded) {
+                this.isThinking = false;
+                this.game.hideBotThinking();
+                return;
+            }
 
-        // Decide: use power, flag a mine, or make move?
-        if (Math.random() < this.powerUsageChance && this.shouldUsePower()) {
-            this.usePowerRandomly();
-        } else {
-            // Try to flag definite mines first
-            const definiteMinesToFlag = this.findDefiniteMines();
-            if (definiteMinesToFlag.length > 0 && Math.random() > 0.3) {
-                const mine = this.pickRandom(definiteMinesToFlag);
-                this.game.makeBotFlag(mine.x, mine.y);
+            // Decide: use power, flag a mine, or make move?
+            if (Math.random() < this.powerUsageChance && this.shouldUsePower()) {
+                this.usePowerRandomly();
             } else {
-                // Otherwise reveal safe cells
-                const move = this.findBestMove();
-                if (move) {
-                    this.game.makeBotMove(move.x, move.y);
+                // Try to flag definite mines first
+                const definiteMinesToFlag = this.findDefiniteMines();
+                if (definiteMinesToFlag.length > 0 && Math.random() > 0.3) {
+                    const mine = this.pickRandom(definiteMinesToFlag);
+                    if (mine) {
+                        this.game.makeBotFlag(mine.x, mine.y);
+                    }
+                } else {
+                    // Otherwise reveal safe cells
+                    const move = this.findBestMove();
+                    if (move) {
+                        this.game.makeBotMove(move.x, move.y);
+                    }
                 }
             }
+        } catch (error) {
+            console.error('[BotAI] Error in makeMove:', error);
         }
 
         this.isThinking = false;
         this.game.hideBotThinking();
 
         // Schedule next move
-        if (this.isActive) {
+        if (this.isActive && !this.game.gameEnded) {
             this.moveInterval = setTimeout(() => {
                 this.makeMove();
             }, this.getRandomDelay());
@@ -299,11 +312,13 @@ export class BotAI {
 
     shouldUsePower() {
         // Check if bot has enough score and power uses left
-        const powers = ['radar', 'safeburst', 'shield'];
+        // Bot uses opponentScore, not player's score
+        const botScore = this.game.opponentScore || 0;
+        const powers = ['freeze', 'radar', 'safeburst', 'shield'];
         for (const power of powers) {
             const cost = this.game.CONFIG?.POWER_COSTS?.[power] || 999;
-            const usesLeft = this.game.powerUsesLeft?.[power] || 0;
-            if (this.game.score >= cost && usesLeft > 0) {
+            const usesLeft = this.game.botPowerUsesLeft?.[power] || 0;
+            if (botScore >= cost && usesLeft > 0) {
                 return true;
             }
         }
@@ -314,10 +329,10 @@ export class BotAI {
         const availablePowers = [];
         
         // Check which powers are available
+        if (this.canUsePower('freeze')) availablePowers.push('freeze');
         if (this.canUsePower('radar')) availablePowers.push('radar');
         if (this.canUsePower('safeburst')) availablePowers.push('safeburst');
         if (this.canUsePower('shield')) availablePowers.push('shield');
-        if (this.canUsePower('freeze')) availablePowers.push('freeze');
 
         if (availablePowers.length === 0) return;
 
@@ -331,8 +346,9 @@ export class BotAI {
 
     canUsePower(power) {
         const cost = this.game.CONFIG?.POWER_COSTS?.[power] || 999;
-        const usesLeft = this.game.powerUsesLeft?.[power] || 0;
-        return this.game.score >= cost && usesLeft > 0;
+        const botScore = this.game.opponentScore || 0;
+        const usesLeft = this.game.botPowerUsesLeft?.[power] || 0;
+        return botScore >= cost && usesLeft > 0;
     }
     
     freeze(duration = 5000) {

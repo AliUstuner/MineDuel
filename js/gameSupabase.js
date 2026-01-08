@@ -435,6 +435,31 @@ class BoardRenderer {
         // Win if all mines flagged AND no wrong flags
         return correctFlags === this.mines.length && wrongFlags === 0;
     }
+    
+    // Check if all safe cells are revealed
+    checkAllSafeCellsRevealed() {
+        if (!this.mines || this.mines.length === 0) return false;
+        
+        const totalCells = this.gridSize * this.gridSize;
+        const safeCells = totalCells - this.mines.length;
+        let revealedSafeCells = 0;
+        
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.grid[y][x];
+                if (cell.isRevealed && !cell.isMine) {
+                    revealedSafeCells++;
+                }
+            }
+        }
+        
+        return revealedSafeCells >= safeCells;
+    }
+    
+    // Check if board is completed (all safe cells revealed OR all mines correctly flagged)
+    checkBoardCompleted() {
+        return this.checkAllMinesFlagged() || this.checkAllSafeCellsRevealed();
+    }
 
     render() {
         const ctx = this.ctx;
@@ -1117,11 +1142,23 @@ class GameClient {
         this.iCompletedBoard = false;
         this.opponentCompletedBoard = false;
         
+        // Track mine hits (max 3 allowed to win)
+        this.mineHitCount = 0;
+        this.opponentMineHitCount = 0;
+        
         // Track revealed cells to prevent duplicates
         this.revealedCells = new Set();
         
         // Initialize power usage limits (max 3 uses per power per game)
         this.powerUsesLeft = {
+            radar: 3,
+            safeburst: 3,
+            shield: 3,
+            freeze: 3
+        };
+        
+        // Bot's own power usage limits
+        this.botPowerUsesLeft = {
             radar: 3,
             safeburst: 3,
             shield: 3,
@@ -1395,6 +1432,7 @@ class GameClient {
         this.updatePowerButtons();
         
         if (hitMine && !this.hasShield) {
+            this.mineHitCount++;
             this.audio.playMine();
             this.showPointsChange('-30', 'error');
             // Stop dragging when hit mine
@@ -1407,7 +1445,8 @@ class GameClient {
         // Broadcast move
         this.broadcastMove({ x: cell.x, y: cell.y, revealed, score: this.score });
         
-        // Note: Win by flagging all mines, not by revealing all cells
+        // Check win condition: 3 or fewer mine hits AND board completed
+        this.checkPlayerWinCondition();
     }
 
     handleCellClick(e) {
@@ -1480,17 +1519,18 @@ class GameClient {
         this.updatePowerButtons();
         
         if (hitMine && !this.hasShield) {
+            this.mineHitCount++;
             this.audio.playMine();
             this.showPointsChange('-30', 'error');
         } else if (points > 0) {
             this.audio.playReveal(revealed.length);
-            // Score updates in UI, no notification needed
         }
         
         // Broadcast move
         this.broadcastMove({ x: cell.x, y: cell.y, revealed, score: this.score });
         
-        // Note: Win by flagging all mines, not by revealing all cells
+        // Check win condition: 3 or fewer mine hits AND board completed
+        this.checkPlayerWinCondition();
     }
 
     handleRightClick(e) {
@@ -1507,9 +1547,22 @@ class GameClient {
         // Broadcast flag to opponent
         this.broadcastFlag(cell.x, cell.y, cellData.isFlagged);
         
-        // Check win condition - all mines flagged correctly
-        if (this.playerBoard.checkAllMinesFlagged()) {
-            this.showNotification('🎉 Tüm mayınları buldun!', 'success');
+        // Check win condition
+        this.checkPlayerWinCondition();
+    }
+    
+    // Check if player wins - 3 or fewer mine hits AND board completed
+    checkPlayerWinCondition() {
+        if (this.gameEnded) return;
+        
+        // Must have 3 or fewer mine hits to win instantly
+        if (this.mineHitCount > 3) {
+            return; // Too many mine hits, must wait for timer
+        }
+        
+        // Check if board is completed (all safe cells revealed OR all mines flagged)
+        if (this.playerBoard.checkBoardCompleted()) {
+            this.showNotification('🎉 Tahtayı tamamladın!', 'success');
             this.endGame(true);
         }
     }
@@ -1653,6 +1706,7 @@ class GameClient {
         this.updatePowerButtons();
         
         if (hitMine && !this.hasShield) {
+            this.mineHitCount++;
             this.audio.playMine();
             this.showPointsChange('-30', 'error');
         } else if (points > 0) {
@@ -1661,7 +1715,8 @@ class GameClient {
         
         this.broadcastMove({ x: cell.x, y: cell.y, revealed, score: this.score });
         
-        // Note: Win by flagging all mines, not by revealing all cells
+        // Check win condition: 3 or fewer mine hits AND board completed
+        this.checkPlayerWinCondition();
         
         this.selectedCell = null;
     }
@@ -1687,11 +1742,8 @@ class GameClient {
             // Broadcast flag to opponent
             this.broadcastFlag(cell.x, cell.y, cellData.isFlagged);
             
-            // Check win condition - all mines flagged correctly
-            if (this.playerBoard.checkAllMinesFlagged()) {
-                this.showNotification('🎉 Tüm mayınları buldun!', 'success');
-                this.endGame(true);
-            }
+            // Check win condition
+            this.checkPlayerWinCondition();
         }
         
         this.removeHighlight();
@@ -2152,20 +2204,14 @@ class GameClient {
         this.updateScore();
         
         if (hitMine) {
+            this.opponentMineHitCount++;
             this.audio.playMine();
         } else if (points > 0) {
             this.audio.playReveal(revealed.length);
         }
         
-        // Check if bot completed board (flagged all mines)
-        if (this.botBoard.checkAllMinesFlagged()) {
-            this.bot?.stop();
-            // Mark that opponent (bot) completed the board
-            this.opponentCompletedBoard = true;
-            setTimeout(() => {
-                this.endGame(false); // Bot found all mines, player loses
-            }, 500);
-        }
+        // Check if bot completed board (3 or fewer mine hits AND board completed)
+        this.checkBotWinCondition();
     }
     
     makeBotFlag(x, y) {
@@ -2188,12 +2234,25 @@ class GameClient {
         // Play flag sound
         this.audio.playFlag();
         
-        // Check if bot won by flagging all mines
-        if (this.botBoard.checkAllMinesFlagged()) {
+        // Check if bot completed board
+        this.checkBotWinCondition();
+    }
+    
+    // Check if bot wins - 3 or fewer mine hits AND board completed
+    checkBotWinCondition() {
+        if (this.gameEnded) return;
+        
+        // Must have 3 or fewer mine hits to win instantly
+        if (this.opponentMineHitCount > 3) {
+            return; // Too many mine hits, must wait for timer
+        }
+        
+        // Check if bot's board is completed
+        if (this.botBoard.checkBoardCompleted()) {
             this.bot?.stop();
             this.opponentCompletedBoard = true;
             setTimeout(() => {
-                this.endGame(false); // Bot found all mines, player loses
+                this.endGame(false); // Bot completed board, player loses
             }, 500);
         }
     }
@@ -2204,32 +2263,46 @@ class GameClient {
         // Bot can only use powers if they have score
         if (this.opponentScore < cost) return;
         
-        // Deduct cost
+        // Check if bot has uses left
+        if (!this.botPowerUsesLeft || this.botPowerUsesLeft[power] <= 0) return;
+        
+        // Deduct cost from bot's score
         this.opponentScore -= cost;
         
-        // Deduct usage
-        if (this.powerUsesLeft && this.powerUsesLeft[power] > 0) {
-            this.powerUsesLeft[power]--;
-        }
+        // Deduct usage from bot's power uses
+        this.botPowerUsesLeft[power]--;
         
         this.updateScore();
         
         // Show notification
         this.showNotification(`🤖 Bot ${power.toUpperCase()} kullandı!`, 'warning');
-        this.showOpponentPowerEffect(power);
         
-        // Apply power effect on bot if applicable
+        // Apply power effects
         if (power === 'freeze') {
-            // Freeze player
+            // Bot freezes the player
             this.handleFrozen(5000);
+            this.showPowerNotificationSimple('freeze', 'Bot seni dondurdu!');
         } else if (power === 'shield') {
-            // Bot gets shield - set both flag and timestamp
+            // Bot gets shield
             this.opponentHasShield = true;
             this.opponentShieldUntil = Date.now() + 10000;
+            this.showOpponentPowerEffect('shield');
             
             setTimeout(() => {
                 this.opponentHasShield = false;
             }, 10000);
+        } else if (power === 'radar') {
+            // Bot uses radar on its own board (doesn't affect player)
+            this.botBoard?.highlightRandomMines?.(3);
+            this.showOpponentPowerEffect('radar');
+        } else if (power === 'safeburst') {
+            // Bot uses safeburst on its own board
+            const result = this.botBoard?.safeBurst?.();
+            if (result && result.points > 0) {
+                this.opponentScore += result.points;
+                this.updateScore();
+            }
+            this.showOpponentPowerEffect('safeburst');
         }
     }
 
