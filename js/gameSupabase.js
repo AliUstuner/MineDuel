@@ -95,6 +95,7 @@ class BoardRenderer {
     setGridSize(gridSize) {
         this.gridSize = gridSize;
         this.grid = this.createEmptyGrid();
+        this.mines = []; // Reset mines for new game
         this.setupCanvas();
     }
 
@@ -885,6 +886,12 @@ class GameClient {
     }
 
     startBotGame() {
+        // Stop any existing bot first
+        if (this.bot) {
+            this.bot.stop();
+            this.bot = null;
+        }
+        
         const playerName = this.playerNameInput?.value || 'Player' + Math.floor(Math.random() * 9999);
         const difficulty = this.selectedDifficulty;
         
@@ -892,6 +899,10 @@ class GameClient {
         this.opponentName = '🤖 Bot';
         this.isHost = true;
         this.gameId = 'bot_' + Date.now();
+        
+        // Reset bot-related state
+        this.opponentCompletedBoard = false;
+        this.botBoard = null;
         
         this.startGame({
             gameId: this.gameId,
