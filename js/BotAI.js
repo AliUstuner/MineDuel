@@ -521,6 +521,8 @@ export class BotAI {
     }
     
     canUsePower(power) {
+        console.log('[BotAI] canUsePower checking botPowerUsesLeft:', this.game.botPowerUsesLeft);
+        
         const cost = this.game.CONFIG?.POWER_COSTS?.[power] || 999;
         const botScore = this.game.opponentScore || 0;
         const usesLeft = this.game.botPowerUsesLeft?.[power] || 0;

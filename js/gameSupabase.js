@@ -1233,6 +1233,9 @@ class GameClient {
             shield: 3,
             freeze: 3
         };
+        
+        console.log('[GAME] Initialized botPowerUsesLeft:', this.botPowerUsesLeft);
+        
         this.updatePowerButtonsUsage();
         
         // Setup boards
