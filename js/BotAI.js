@@ -99,12 +99,7 @@ export class BotAI {
     }
 
     async makeMove() {
-        console.log('[BotAI] makeMove called', { isActive: this.isActive, isThinking: this.isThinking });
-        
-        if (!this.isActive || this.isThinking) {
-            console.log('[BotAI] Skipping move - not active or already thinking');
-            return;
-        }
+        if (!this.isActive || this.isThinking) return;
         
         // Check if board exists
         if (!this.board || !this.board.grid) {
@@ -114,14 +109,12 @@ export class BotAI {
         
         // Check if game ended
         if (this.game.gameEnded) {
-            console.log('[BotAI] Game ended, stopping bot');
             this.stop();
             return;
         }
         
         // Check if bot is frozen
         if (this.isFrozen && Date.now() < this.frozenUntil) {
-            console.log('[BotAI] Bot is frozen, waiting...');
             const waitTime = this.frozenUntil - Date.now();
             this.moveInterval = setTimeout(() => {
                 this.makeMove();
@@ -142,42 +135,15 @@ export class BotAI {
                 return;
             }
 
-            let actionTaken = false;
+            // Smart decision making - prioritize winning
+            this.makeSmartDecision();
             
-            // Decide: use power, flag a mine, or make move?
-            if (Math.random() < this.powerUsageChance && this.shouldUsePower()) {
-                console.log('[BotAI] Using power...');
-                this.usePowerRandomly();
-                actionTaken = true;
-            } else {
-                // Try to flag definite mines first
-                const definiteMinesToFlag = this.findDefiniteMines();
-                if (definiteMinesToFlag.length > 0 && Math.random() > 0.3) {
-                    const mine = this.pickRandom(definiteMinesToFlag);
-                    if (mine) {
-                        console.log('[BotAI] Flagging mine at', mine.x, mine.y);
-                        this.game.makeBotFlag(mine.x, mine.y);
-                        actionTaken = true;
-                    }
-                }
-                
-                if (!actionTaken) {
-                    // Otherwise reveal safe cells
-                    const move = this.findBestMove();
-                    if (move) {
-                        console.log('[BotAI] Revealing cell at', move.x, move.y);
-                        this.game.makeBotMove(move.x, move.y);
-                        actionTaken = true;
-                    } else {
-                        console.log('[BotAI] No valid move found!');
-                    }
-                }
-            }
         } catch (error) {
             console.error('[BotAI] Error in makeMove:', error);
         }
 
         this.isThinking = false;
+        this.game.hideBotThinking();
         this.game.hideBotThinking();
 
         // Schedule next move
@@ -188,7 +154,7 @@ export class BotAI {
         }
     }
     
-    // Find cells that are definitely mines based on number analysis
+    // Find cells that are definitely mines - use this to AVOID them, not flag them
     findDefiniteMines() {
         const definiteMines = [];
         
@@ -212,40 +178,130 @@ export class BotAI {
                 // If remaining unrevealed count equals remaining mines needed
                 const remainingMines = cell.neighborCount - flaggedCount;
                 if (remainingMines > 0 && unrevealedUnflagged.length === remainingMines) {
-                    // All these cells are mines!
+                    // All these cells are mines - AVOID them!
                     definiteMines.push(...unrevealedUnflagged);
                 }
             }
         }
         
         // Remove duplicates
-        const unique = [];
-        const seen = new Set();
+        const unique = new Set();
         for (const m of definiteMines) {
-            const key = `${m.x},${m.y}`;
-            if (!seen.has(key)) {
-                seen.add(key);
-                unique.push(m);
+            unique.add(`${m.x},${m.y}`);
+        }
+        
+        return unique; // Return as Set for easy lookup
+    }
+    
+    // Smart decision making - "En çok puanı olan kazanır" bilinci
+    makeSmartDecision() {
+        const botScore = this.game.opponentScore || 0;
+        const playerScore = this.game.score || 0;
+        const scoreDiff = botScore - playerScore;
+        
+        // 1. ALWAYS prioritize revealing safe cells to gain points
+        const safeCells = this.findSafeCellsFromDeduction();
+        if (safeCells.length > 0) {
+            const cell = this.pickRandom(safeCells);
+            this.game.makeBotMove(cell.x, cell.y);
+            return;
+        }
+        
+        // 2. Only use powers strategically (not randomly!)
+        if (this.shouldUseStrategicPower(scoreDiff)) {
+            this.useStrategicPower(scoreDiff);
+            return;
+        }
+        
+        // 3. Make the best available move
+        const move = this.findBestMove();
+        if (move) {
+            this.game.makeBotMove(move.x, move.y);
+            return;
+        }
+        
+        // 4. If no moves, try any unrevealed cell
+        const allUnrevealed = this.getAllUnrevealedCells();
+        if (allUnrevealed.length > 0) {
+            const cell = this.pickRandom(allUnrevealed);
+            this.game.makeBotMove(cell.x, cell.y);
+        }
+    }
+    
+    // Check if we should use a power strategically
+    shouldUseStrategicPower(scoreDiff) {
+        const botScore = this.game.opponentScore || 0;
+        
+        // Don't use powers if score is too low (save points!)
+        if (botScore < 50) return false;
+        
+        // Random chance based on difficulty (but much lower than before)
+        const useChance = this.powerUsageChance * 0.3; // Reduce by 70%
+        if (Math.random() > useChance) return false;
+        
+        // If we're losing by a lot, DON'T use powers - save points!
+        if (scoreDiff < -30) return false;
+        
+        // If we're winning by a lot, maybe use freeze to maintain lead
+        if (scoreDiff > 50 && this.canUsePower('freeze')) return true;
+        
+        // Only use power if we have a significant lead or it's strategic
+        return scoreDiff > 20;
+    }
+    
+    // Use power strategically based on game state
+    useStrategicPower(scoreDiff) {
+        const botScore = this.game.opponentScore || 0;
+        
+        // Priority: freeze (if winning) > safeburst (if need points) > shield (if player might freeze us)
+        
+        // If winning by a lot, freeze opponent to maintain lead
+        if (scoreDiff > 30 && this.canUsePower('freeze')) {
+            const cost = this.game.CONFIG?.POWER_COSTS?.freeze || 30;
+            if (botScore > cost + 20) { // Keep 20 point buffer
+                this.game.useBotPower('freeze', cost);
+                return;
             }
         }
         
-        return unique;
+        // Use shield only if we have a lot of points to protect
+        if (botScore > 80 && this.canUsePower('shield')) {
+            const cost = this.game.CONFIG?.POWER_COSTS?.shield || 25;
+            if (botScore > cost + 30) {
+                this.game.useBotPower('shield', cost);
+                return;
+            }
+        }
+        
+        // Use safeburst only if stuck (no safe cells found)
+        const safeCells = this.findSafeCellsFromDeduction();
+        if (safeCells.length === 0 && this.canUsePower('safeburst')) {
+            const cost = this.game.CONFIG?.POWER_COSTS?.safeburst || 35;
+            if (botScore > cost + 20) {
+                this.game.useBotPower('safeburst', cost);
+                return;
+            }
+        }
     }
 
     findBestMove() {
+        // Get known mine locations to avoid them
+        const knownMines = this.findDefiniteMines();
+        
         // Mistake chance - sometimes make a random move instead of optimal
+        // But NEVER click on known mines even when making mistakes
         if (Math.random() < this.mistakeChance) {
             const allUnrevealed = this.getAllUnrevealedCells();
-            if (allUnrevealed.length > 0) {
-                console.log('[BotAI] Making random move (mistake)');
-                return this.pickRandom(allUnrevealed);
+            const safeMoves = allUnrevealed.filter(c => !knownMines.has(`${c.x},${c.y}`));
+            if (safeMoves.length > 0) {
+                return this.pickRandom(safeMoves);
             }
         }
         
         // Strategy priority:
         // 1. Find guaranteed safe cells (from revealed numbers)
-        // 2. Find corner/edge cells (statistically safer)
-        // 3. Random cell (avoid known flags)
+        // 2. Find corner/edge cells (statistically safer, avoid known mines)
+        // 3. Random cell (avoid known mines)
 
         // Priority 1: Safe cells from deduction
         const safeCells = this.findSafeCellsFromDeduction();
@@ -253,20 +309,26 @@ export class BotAI {
             return this.pickRandom(safeCells);
         }
 
-        // Priority 2: Corner cells (if not revealed)
-        const cornerCells = this.getCornerCells();
+        // Priority 2: Corner cells (if not revealed and not known mine)
+        const cornerCells = this.getCornerCells().filter(c => !knownMines.has(`${c.x},${c.y}`));
         if (cornerCells.length > 0 && Math.random() > 0.5) {
             return this.pickRandom(cornerCells);
         }
 
-        // Priority 3: Edge cells
-        const edgeCells = this.getEdgeCells();
+        // Priority 3: Edge cells (avoid known mines)
+        const edgeCells = this.getEdgeCells().filter(c => !knownMines.has(`${c.x},${c.y}`));
         if (edgeCells.length > 0 && Math.random() > 0.3) {
             return this.pickRandom(edgeCells);
         }
 
-        // Priority 4: Any unrevealed cell
+        // Priority 4: Any unrevealed cell (AVOID known mines!)
         const allUnrevealed = this.getAllUnrevealedCells();
+        const safeMoves = allUnrevealed.filter(c => !knownMines.has(`${c.x},${c.y}`));
+        if (safeMoves.length > 0) {
+            return this.pickRandom(safeMoves);
+        }
+        
+        // If all remaining cells are known mines, pick any (will hit mine but no choice)
         if (allUnrevealed.length > 0) {
             return this.pickRandom(allUnrevealed);
         }
@@ -375,40 +437,6 @@ export class BotAI {
     pickRandom(array) {
         if (array.length === 0) return null;
         return array[Math.floor(Math.random() * array.length)];
-    }
-
-    shouldUsePower() {
-        // Check if bot has enough score and power uses left
-        // Bot uses opponentScore, not player's score
-        const botScore = this.game.opponentScore || 0;
-        const powers = ['freeze', 'radar', 'safeburst', 'shield'];
-        for (const power of powers) {
-            const cost = this.game.CONFIG?.POWER_COSTS?.[power] || 999;
-            const usesLeft = this.game.botPowerUsesLeft?.[power] || 0;
-            if (botScore >= cost && usesLeft > 0) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    usePowerRandomly() {
-        const availablePowers = [];
-        
-        // Check which powers are available
-        if (this.canUsePower('freeze')) availablePowers.push('freeze');
-        if (this.canUsePower('radar')) availablePowers.push('radar');
-        if (this.canUsePower('safeburst')) availablePowers.push('safeburst');
-        if (this.canUsePower('shield')) availablePowers.push('shield');
-
-        if (availablePowers.length === 0) return;
-
-        // Pick random power
-        const power = this.pickRandom(availablePowers);
-        const cost = this.game.CONFIG?.POWER_COSTS?.[power] || 0;
-
-        // Use the power through game interface
-        this.game.useBotPower(power, cost);
     }
 
     canUsePower(power) {
