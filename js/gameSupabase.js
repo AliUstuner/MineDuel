@@ -2145,8 +2145,10 @@ class GameClient {
             // Freeze player
             this.handleFrozen(5000);
         } else if (power === 'shield') {
-            // Bot gets shield (we could track this if needed)
+            // Bot gets shield - set both flag and timestamp
             this.opponentHasShield = true;
+            this.opponentShieldUntil = Date.now() + 10000;
+            
             setTimeout(() => {
                 this.opponentHasShield = false;
             }, 10000);
