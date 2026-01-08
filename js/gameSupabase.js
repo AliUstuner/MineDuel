@@ -2358,13 +2358,26 @@ class GameClient {
     }
     
     useBotPower(power, cost) {
-        if (!this.isBotMode) return;
+        console.log('[BOT POWER] useBotPower called:', { power, cost, isBotMode: this.isBotMode });
+        
+        if (!this.isBotMode) {
+            console.log('[BOT POWER] Not in bot mode');
+            return;
+        }
         
         // Bot can only use powers if they have score
-        if (this.opponentScore < cost) return;
+        if (this.opponentScore < cost) {
+            console.log('[BOT POWER] Not enough score:', this.opponentScore, '<', cost);
+            return;
+        }
         
         // Check if bot has uses left
-        if (!this.botPowerUsesLeft || this.botPowerUsesLeft[power] <= 0) return;
+        if (!this.botPowerUsesLeft || this.botPowerUsesLeft[power] <= 0) {
+            console.log('[BOT POWER] No uses left:', this.botPowerUsesLeft);
+            return;
+        }
+        
+        console.log('[BOT POWER] Using power:', power);
         
         // Deduct cost from bot's score
         this.opponentScore -= cost;

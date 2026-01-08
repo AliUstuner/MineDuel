@@ -524,23 +524,43 @@ export class BotAI {
         const cost = this.game.CONFIG?.POWER_COSTS?.[power] || 999;
         const botScore = this.game.opponentScore || 0;
         const usesLeft = this.game.botPowerUsesLeft?.[power] || 0;
-        return botScore >= cost && usesLeft > 0;
+        const canUse = botScore >= cost && usesLeft > 0;
+        
+        console.log(`[BotAI] canUsePower(${power}):`, {
+            cost,
+            botScore,
+            usesLeft,
+            canUse
+        });
+        
+        return canUse;
     }
     
     // Strategically consider using a power
     considerUsingPower() {
-        if (!this.game || !this.game.CONFIG) return null;
+        if (!this.game || !this.game.CONFIG) {
+            console.log('[BotAI] No game or CONFIG available');
+            return null;
+        }
         
         const botScore = this.game.opponentScore || 0;
         const playerScore = this.game.score || 0;
         const timeRemaining = this.game.matchDuration - (Date.now() - this.game.matchStartTime);
         const timeRemainingPercent = timeRemaining / this.game.matchDuration;
         
+        console.log('[BotAI] Power check:', {
+            botScore,
+            playerScore,
+            timeRemainingPercent: (timeRemainingPercent * 100).toFixed(0) + '%',
+            costs: this.game.CONFIG.POWER_COSTS
+        });
+        
         // Strategic decisions:
         
         // 1. Use FREEZE if player is ahead and time is running out
         if (playerScore > botScore + 30 && timeRemainingPercent < 0.5) {
             if (this.canUsePower('freeze')) {
+                console.log('[BotAI] Using FREEZE - player ahead');
                 this.game.useBotPower('freeze', this.game.CONFIG.POWER_COSTS.freeze);
                 return 'freeze';
             }
@@ -549,6 +569,7 @@ export class BotAI {
         // 2. Use SHIELD if bot is ahead and wants to protect lead
         if (botScore > playerScore && timeRemainingPercent < 0.3) {
             if (this.canUsePower('shield') && !this.game.opponentHasShield) {
+                console.log('[BotAI] Using SHIELD - protecting lead');
                 this.game.useBotPower('shield', this.game.CONFIG.POWER_COSTS.shield);
                 return 'shield';
             }
@@ -558,6 +579,7 @@ export class BotAI {
         const safeCells = this.findGuaranteedSafeCells();
         if (safeCells.length === 0 && botScore >= 40) {
             if (this.canUsePower('radar')) {
+                console.log('[BotAI] Using RADAR - stuck');
                 this.game.useBotPower('radar', this.game.CONFIG.POWER_COSTS.radar);
                 return 'radar';
             }
@@ -566,6 +588,7 @@ export class BotAI {
         // 4. Use SAFEBURST early for quick points
         if (timeRemainingPercent > 0.7 && botScore >= 50) {
             if (this.canUsePower('safeburst')) {
+                console.log('[BotAI] Using SAFEBURST - early game');
                 this.game.useBotPower('safeburst', this.game.CONFIG.POWER_COSTS.safeburst);
                 return 'safeburst';
             }
