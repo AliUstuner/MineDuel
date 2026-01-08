@@ -2121,6 +2121,8 @@ class GameClient {
         // Check if bot completed board
         if (this.botBoard.getUnrevealedCount() === 0) {
             this.bot?.stop();
+            // Mark that opponent (bot) completed the board
+            this.opponentCompletedBoard = true;
             setTimeout(() => {
                 this.endGame(false); // Bot completed, player loses
             }, 500);
