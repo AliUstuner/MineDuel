@@ -4,6 +4,7 @@
  */
 
 import * as SupabaseClient from './supabaseClient.js';
+import { BotAI } from './BotAI.js';
 
 // ==================== CONFIGURATION ====================
 const CONFIG = {
@@ -507,6 +508,7 @@ class BoardRenderer {
 // ==================== GAME CLIENT ====================
 class GameClient {
     constructor() {
+        this.CONFIG = CONFIG; // Make CONFIG accessible for bot
         this.user = null;
         this.profile = null;
         this.gameId = null;
@@ -526,6 +528,11 @@ class GameClient {
         this.hasShield = false;
         this.isFrozen = false;
         this.frozenUntil = 0;
+        
+        // Bot mode
+        this.isBotMode = false;
+        this.bot = null;
+        this.botBoard = null;
         
         // Mobile/Touch support - detect touch capability, not screen size
         this.isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
@@ -624,6 +631,10 @@ class GameClient {
     setupEventListeners() {
         this.findGameBtn?.addEventListener('click', () => this.findGame());
         this.cancelSearchBtn?.addEventListener('click', () => this.cancelSearch());
+        
+        // Bot mode button
+        const playWithBotBtn = document.getElementById('play-with-bot-btn');
+        playWithBotBtn?.addEventListener('click', () => this.startBotGame());
         
         this.difficultyButtons.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -871,6 +882,33 @@ class GameClient {
             console.error('Matchmaking error:', error);
             // Silent retry - keep waiting for players
         }
+    }
+
+    startBotGame() {
+        const playerName = this.playerNameInput?.value || 'Player' + Math.floor(Math.random() * 9999);
+        const difficulty = this.selectedDifficulty;
+        
+        this.isBotMode = true;
+        this.opponentName = '🤖 Bot';
+        this.isHost = true;
+        this.gameId = 'bot_' + Date.now();
+        
+        this.startGame({
+            gameId: this.gameId,
+            opponent: '🤖 Bot',
+            difficulty: difficulty,
+            gridSize: CONFIG.DIFFICULTIES[difficulty].gridSize,
+            mineCount: CONFIG.DIFFICULTIES[difficulty].mineCount,
+            myName: playerName,
+            isOffline: true
+        });
+        
+        // Start bot AI after boards are ready
+        setTimeout(() => {
+            this.bot = new BotAI(this, difficulty);
+            this.botBoard = this.opponentBoard;
+            this.bot.start(this.botBoard, CONFIG.DIFFICULTIES[difficulty].gridSize);
+        }, 1000);
     }
 
     startMatchPolling(odaUserId, difficulty) {
@@ -2015,11 +2053,110 @@ class GameClient {
         }, 3000);
     }
 
+    // ==================== BOT HELPER FUNCTIONS ====================
+    
+    showBotThinking() {
+        const botThinking = document.getElementById('bot-thinking');
+        if (botThinking) {
+            botThinking.classList.remove('hidden');
+        }
+    }
+    
+    hideBotThinking() {
+        const botThinking = document.getElementById('bot-thinking');
+        if (botThinking) {
+            botThinking.classList.add('hidden');
+        }
+    }
+    
+    makeBotMove(x, y) {
+        if (!this.isBotMode || !this.botBoard) return;
+        
+        // Generate bot mines on first move if needed
+        if (!this.botBoard.mines || this.botBoard.mines.length === 0) {
+            const mineCount = this.pendingMineCount || 20;
+            this.botBoard.generateMines(mineCount, x, y);
+        }
+        
+        const revealed = this.botBoard.revealCell(x, y);
+        this.botBoard.render();
+        
+        // Calculate bot score
+        let points = 0;
+        let hitMine = false;
+        
+        revealed.forEach(c => {
+            if (c.isMine) {
+                hitMine = true;
+                points -= 30;
+            } else {
+                points += 5;
+            }
+        });
+        
+        this.opponentScore = Math.max(0, this.opponentScore + points);
+        this.updateScore();
+        
+        if (hitMine) {
+            this.audio.playMine();
+        } else if (points > 0) {
+            this.audio.playReveal(revealed.length);
+        }
+        
+        // Check if bot completed board
+        if (this.botBoard.getUnrevealedCount() === 0) {
+            this.bot?.stop();
+            setTimeout(() => {
+                this.endGame(false); // Bot completed, player loses
+            }, 500);
+        }
+    }
+    
+    useBotPower(power, cost) {
+        if (!this.isBotMode) return;
+        
+        // Bot can only use powers if they have score
+        if (this.opponentScore < cost) return;
+        
+        // Deduct cost
+        this.opponentScore -= cost;
+        
+        // Deduct usage
+        if (this.powerUsesLeft && this.powerUsesLeft[power] > 0) {
+            this.powerUsesLeft[power]--;
+        }
+        
+        this.updateScore();
+        
+        // Show notification
+        this.showNotification(`🤖 Bot ${power.toUpperCase()} kullandı!`, 'warning');
+        this.showOpponentPowerEffect(power);
+        
+        // Apply power effect on bot if applicable
+        if (power === 'freeze') {
+            // Freeze player
+            this.handleFrozen(5000);
+        } else if (power === 'shield') {
+            // Bot gets shield (we could track this if needed)
+            this.opponentHasShield = true;
+            setTimeout(() => {
+                this.opponentHasShield = false;
+            }, 10000);
+        }
+    }
+
+    // ==================== GAME END ====================
+
     endGame(completedBoard = false) {
         // Prevent multiple endGame calls
         if (this.gameEnded) return;
         this.gameEnded = true;
         this.iCompletedBoard = completedBoard;
+        
+        // Stop bot if in bot mode
+        if (this.isBotMode && this.bot) {
+            this.bot.stop();
+        }
         
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
@@ -2030,8 +2167,8 @@ class GameClient {
         const navTimer = document.getElementById('nav-timer');
         if (navTimer) navTimer.classList.add('hidden');
         
-        // Broadcast game end with my final score and completion status
-        if (this.gameChannel) {
+        // Broadcast game end with my final score and completion status (skip for bot mode)
+        if (this.gameChannel && !this.isBotMode) {
             this.gameChannel.send({
                 type: 'broadcast',
                 event: 'gameEnd',

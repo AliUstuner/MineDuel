@@ -536,6 +536,16 @@ body {
     animation: frozenPulse 1s ease-in-out infinite;
 }
 
+.bot-thinking-overlay {
+    background: rgba(150, 50, 255, 0.7);
+    animation: botThinking 1.5s ease-in-out infinite;
+}
+
+@keyframes botThinking {
+    0%, 100% { background: rgba(150, 50, 255, 0.7); }
+    50% { background: rgba(100, 30, 200, 0.8); }
+}
+
 @keyframes frozenPulse {
     0%, 100% { background: rgba(0, 150, 255, 0.8); }
     50% { background: rgba(0, 150, 255, 0.6); }
