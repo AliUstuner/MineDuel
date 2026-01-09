@@ -1,11 +1,14 @@
 /**
- * BotAI.js - Advanced AI System for MineDuel
- * Features:
- * - Machine Learning-like pattern recognition
- * - Strategic power usage at optimal moments
- * - Adaptive difficulty that learns from games
- * - Opponent board analysis
- * - Pattern-based mine detection
+ * BotAI.js - ADVANCED INTELLIGENT MINESWEEPER AI
+ * 
+ * A serious, strategic AI that:
+ * - Uses Constraint Satisfaction Problem (CSP) solving for mine detection
+ * - Continuously analyzes both boards (self and opponent)
+ * - Makes decisions based on game theory and probability
+ * - Adapts strategy based on game state
+ * - Learns from each game played
+ * 
+ * Core Philosophy: "Every decision must maximize winning probability"
  */
 
 export class BotAI {
@@ -19,1341 +22,403 @@ export class BotAI {
         this.moveInterval = null;
         this.isFrozen = false;
         this.frozenUntil = 0;
+        this.stuckCounter = 0;
         
-        // Learning system - persists in localStorage
-        this.learningData = this.loadLearningData();
+        // ==================== INTELLIGENT ANALYSIS SYSTEM ====================
         
-        // Move history for pattern analysis
-        this.moveHistory = [];
-        this.gameHistory = [];
-        
-        // Pattern recognition cache
-        this.patternCache = new Map();
-        
-        // RADAR DETECTED MINES - Mines found by radar power
-        this.radarDetectedMines = new Set(); // Stores "x,y" strings
-        
-        // SCORE AWARENESS - Bot knows score matters most
-        this.scoreStrategy = {
-            targetScore: 0,           // Updated based on player score
-            conservePowers: true,     // Start conservative with powers
-            powerValueAssessment: {   // How much each power is "worth" in score terms
-                radar: 50,            // Prevents mine hit (-30) + helps find safe cells
-                safeburst: 15,        // Direct points but costs 40
-                shield: 30,           // Defensive value
-                freeze: 80            // High value when player is ahead
+        // Real-time board state analysis
+        this.boardAnalysis = {
+            // My board state
+            myBoard: {
+                revealedCells: 0,
+                flaggedCells: 0,
+                safeCellsRemaining: 0,
+                minesRemaining: 0,
+                completionPercent: 0,
+                dangerZones: [],
+                safeZones: [],
+                uncertainZones: []
+            },
+            // Opponent (player) board state
+            opponentBoard: {
+                revealedCells: 0,
+                estimatedCompletion: 0,
+                scoreRate: 0,
+                lastScoreCheck: 0,
+                lastScore: 0,
+                isOnStreak: false,
+                streakLength: 0
             }
         };
         
-        // POWER USAGE LIMITS - Prevent spam
-        this.powerUsageThisGame = {
-            freeze: 0,
-            shield: 0,
-            radar: 0,
-            safeburst: 0
-        };
-        this.powerMaxUsage = {
-            freeze: 1,      // Maximum 1 freeze per game
-            shield: 1,      // Maximum 1 shield per game  
-            radar: 2,       // Maximum 2 radar per game
-            safeburst: 1    // Maximum 1 safeburst per game
-        };
+        // Probability map for each cell
+        this.probabilityMap = new Map();
         
-        // Strategic state tracking
-        this.strategicState = {
-            lastPowerUsed: 0,
-            powerCooldown: 15000,  // 15 second cooldown between ANY power
-            lastFreezeTime: 0,
-            freezeCooldown: 60000, // 60 second cooldown for freeze specifically
-            consecutiveSafeMoves: 0,
-            consecutiveMineHits: 0,
-            isDefensive: false,
-            isAggressive: false,
-            playerThreatLevel: 0
+        // Known information
+        this.knownMines = new Set();
+        this.knownSafe = new Set();
+        this.flaggedCells = new Set();
+        
+        // ==================== STRATEGIC STATE ====================
+        
+        this.strategy = {
+            mode: 'balanced',
+            lastModeChange: 0,
+            powerBudget: 0,
+            targetScore: 0,
+            riskTolerance: 0.3,
+            
+            powersUsed: { freeze: 0, shield: 0, radar: 0, safeburst: 0 },
+            powerLimits: this.getPowerLimits(difficulty),
+            lastPowerTime: 0,
+            powerCooldown: this.getPowerCooldown(difficulty)
         };
         
-        // Difficulty settings with enhanced parameters
-        this.settings = this.getDifficultySettings();
+        // ==================== LEARNING SYSTEM ====================
         
-        console.log(`[BotAI] Created ADVANCED AI with difficulty: ${difficulty}`);
-        console.log(`[BotAI] Learning data loaded: ${this.learningData.gamesPlayed} games played`);
+        this.learning = this.loadLearning();
+        
+        // Current game tracking
+        this.gameStats = {
+            movesMade: 0,
+            minesHit: 0,
+            correctFlags: 0,
+            wrongFlags: 0,
+            decisionsAnalyzed: 0
+        };
+        
+        // Move history
+        this.moveHistory = [];
+        
+        // ==================== DIFFICULTY SETTINGS ====================
+        
+        this.settings = this.getSettings();
+        
+        console.log(`[AI] Initialized ${difficulty.toUpperCase()} AI - Games played: ${this.learning.totalGames}`);
     }
 
-    getDifficultySettings() {
-        const baseSettings = {
+    // ==================== SETTINGS BY DIFFICULTY ====================
+    
+    getSettings() {
+        const configs = {
             easy: {
-                minDelay: 2000,
-                maxDelay: 3500,
-                mistakeChance: 0.30,
-                powerUsageChance: 0.08,
-                patternRecognition: 0.4,
-                strategicThinking: 0.3,
-                learningRate: 0.1,
-                reactionSpeed: 0.5,
-                boardAnalysisDepth: 1
+                thinkTime: { min: 1500, max: 2500 },
+                mistakeRate: 0.25,
+                analysisDepth: 1,
+                useCSP: false,
+                useProbability: false
             },
             medium: {
-                minDelay: 1200,
-                maxDelay: 2200,
-                mistakeChance: 0.18,
-                powerUsageChance: 0.15,
-                patternRecognition: 0.6,
-                strategicThinking: 0.5,
-                learningRate: 0.2,
-                reactionSpeed: 0.7,
-                boardAnalysisDepth: 2
+                thinkTime: { min: 800, max: 1500 },
+                mistakeRate: 0.12,
+                analysisDepth: 2,
+                useCSP: true,
+                useProbability: true
             },
             hard: {
-                minDelay: 600,
-                maxDelay: 1200,
-                mistakeChance: 0.08,
-                powerUsageChance: 0.25,
-                patternRecognition: 0.85,
-                strategicThinking: 0.75,
-                learningRate: 0.35,
-                reactionSpeed: 0.85,
-                boardAnalysisDepth: 3
+                thinkTime: { min: 400, max: 900 },
+                mistakeRate: 0.05,
+                analysisDepth: 3,
+                useCSP: true,
+                useProbability: true
             },
             expert: {
-                minDelay: 300,
-                maxDelay: 700,
-                mistakeChance: 0.02,
-                powerUsageChance: 0.35,
-                patternRecognition: 0.98,
-                strategicThinking: 0.95,
-                learningRate: 0.5,
-                reactionSpeed: 0.95,
-                boardAnalysisDepth: 4
+                thinkTime: { min: 200, max: 500 },
+                mistakeRate: 0.01,
+                analysisDepth: 4,
+                useCSP: true,
+                useProbability: true
             }
         };
         
-        let settings = baseSettings[this.difficulty] || baseSettings.medium;
-        
-        // Apply learning bonuses based on games played
-        const learningBonus = Math.min(0.15, this.learningData.gamesPlayed * 0.005);
-        settings.patternRecognition = Math.min(1, settings.patternRecognition + learningBonus);
-        settings.strategicThinking = Math.min(1, settings.strategicThinking + learningBonus);
-        
-        return settings;
+        return configs[this.difficulty] || configs.medium;
+    }
+    
+    // Power limits by difficulty
+    getPowerLimits(difficulty) {
+        const limits = {
+            easy: { freeze: 0, shield: 0, radar: 1, safeburst: 0 },
+            medium: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
+            hard: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
+            expert: { freeze: 2, shield: 1, radar: 3, safeburst: 2 }
+        };
+        return limits[difficulty] || limits.medium;
+    }
+    
+    // Cooldown by difficulty (ms)
+    getPowerCooldown(difficulty) {
+        const cooldowns = {
+            easy: 30000,    // 30 saniye - çok nadir
+            medium: 18000,  // 18 saniye
+            hard: 12000,    // 12 saniye
+            expert: 8000    // 8 saniye - çok agresif
+        };
+        return cooldowns[difficulty] || 18000;
     }
 
-    // ==================== LEARNING SYSTEM ====================
+    // ==================== LEARNING PERSISTENCE ====================
     
-    loadLearningData() {
+    loadLearning() {
         try {
-            const saved = localStorage.getItem('mineduel_bot_learning');
-            if (saved) {
-                return JSON.parse(saved);
-            }
-        } catch (e) {
-            console.error('[BotAI] Failed to load learning data:', e);
-        }
+            const data = localStorage.getItem('mineduel_ai_v3');
+            if (data) return JSON.parse(data);
+        } catch (e) {}
         
         return {
-            gamesPlayed: 0,
+            totalGames: 0,
             wins: 0,
             losses: 0,
-            // Pattern learning: which cell positions are often safe/dangerous
-            cellPatterns: {},
-            // Move patterns: successful opening strategies
-            openingMoves: [],
-            // Power usage patterns: when powers were used successfully
-            powerPatterns: {
-                freeze: { successfulUses: [], optimalConditions: {} },
-                shield: { successfulUses: [], optimalConditions: {} },
-                radar: { successfulUses: [], optimalConditions: {} },
-                safeburst: { successfulUses: [], optimalConditions: {} }
-            },
-            // Human behavior patterns
-            humanPatterns: {
-                averageMovesPerGame: 0,
-                preferredStartPositions: {},
-                commonMistakes: [],
-                speedPattern: 'normal'
-            },
-            // Board state patterns that lead to wins/losses
-            winningPatterns: [],
-            losingPatterns: []
-        };
-    }
-
-    saveLearningData() {
-        try {
-            localStorage.setItem('mineduel_bot_learning', JSON.stringify(this.learningData));
-        } catch (e) {
-            console.error('[BotAI] Failed to save learning data:', e);
-        }
-    }
-
-    recordMove(x, y, result) {
-        this.moveHistory.push({
-            x, y,
-            result: result.hitMine ? 'mine' : 'safe',
-            points: result.points || 0,
-            cellsRevealed: result.cellsRevealed || 1,
-            timestamp: Date.now(),
-            gameState: this.captureGameState()
-        });
-        
-        // Update pattern cache
-        const patternKey = this.generatePatternKey(x, y);
-        if (!this.learningData.cellPatterns[patternKey]) {
-            this.learningData.cellPatterns[patternKey] = { safe: 0, mine: 0 };
-        }
-        
-        if (result.hitMine) {
-            this.learningData.cellPatterns[patternKey].mine++;
-            this.strategicState.consecutiveMineHits++;
-            this.strategicState.consecutiveSafeMoves = 0;
-            // Only increment stuck counter on mine hit
-            this.stuckCounter++;
-        } else {
-            this.learningData.cellPatterns[patternKey].safe++;
-            this.strategicState.consecutiveSafeMoves++;
-            this.strategicState.consecutiveMineHits = 0;
-            // Reset stuck counter on successful safe reveal
-            this.stuckCounter = 0;
-        }
-    }
-
-    recordPowerUsage(power, success, gameState) {
-        this.learningData.powerPatterns[power].successfulUses.push({
-            success,
-            gameState,
-            timestamp: Date.now()
-        });
-        
-        // Update optimal conditions
-        if (success) {
-            const conditions = this.learningData.powerPatterns[power].optimalConditions;
-            conditions.avgPlayerScore = (conditions.avgPlayerScore || 0) * 0.9 + gameState.playerScore * 0.1;
-            conditions.avgBotScore = (conditions.avgBotScore || 0) * 0.9 + gameState.botScore * 0.1;
-            conditions.avgTimeRemaining = (conditions.avgTimeRemaining || 0) * 0.9 + gameState.timeRemaining * 0.1;
-        }
-    }
-
-    captureGameState() {
-        return {
-            playerScore: this.game?.score || 0,
-            botScore: this.game?.opponentScore || 0,
-            timeRemaining: this.getTimeRemaining(),
-            boardCompletion: this.calculateBoardCompletion(),
-            playerCompletion: this.game?.playerCompletion || 0
-        };
-    }
-
-    endGameLearning(won) {
-        this.learningData.gamesPlayed++;
-        if (won) {
-            this.learningData.wins++;
-            // Record winning pattern
-            this.learningData.winningPatterns.push({
-                moves: this.moveHistory.slice(-20),
-                finalState: this.captureGameState()
-            });
-        } else {
-            this.learningData.losses++;
-            this.learningData.losingPatterns.push({
-                moves: this.moveHistory.slice(-20),
-                finalState: this.captureGameState()
-            });
-        }
-        
-        // Keep only last 50 patterns
-        if (this.learningData.winningPatterns.length > 50) {
-            this.learningData.winningPatterns = this.learningData.winningPatterns.slice(-50);
-        }
-        if (this.learningData.losingPatterns.length > 50) {
-            this.learningData.losingPatterns = this.learningData.losingPatterns.slice(-50);
-        }
-        
-        this.saveLearningData();
-        console.log(`[BotAI] Learning updated: ${this.learningData.gamesPlayed} games, ${this.learningData.wins} wins`);
-    }
-
-    generatePatternKey(x, y) {
-        // Generate a pattern based on position type (corner, edge, center)
-        let type = 'center';
-        if ((x === 0 || x === this.gridSize - 1) && (y === 0 || y === this.gridSize - 1)) {
-            type = 'corner';
-        } else if (x === 0 || x === this.gridSize - 1 || y === 0 || y === this.gridSize - 1) {
-            type = 'edge';
-        }
-        
-        // Include surrounding revealed pattern
-        const surroundingPattern = this.getSurroundingPattern(x, y);
-        return `${type}_${surroundingPattern}`;
-    }
-
-    getSurroundingPattern(x, y) {
-        if (!this.board || !this.board.grid) return 'unknown';
-        
-        let pattern = '';
-        for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue;
-                const nx = x + dx;
-                const ny = y + dy;
-                if (nx >= 0 && nx < this.gridSize && ny >= 0 && ny < this.gridSize) {
-                    const cell = this.board.grid[ny][nx];
-                    if (cell.isRevealed) {
-                        pattern += cell.neighborCount.toString();
-                    } else if (cell.isFlagged) {
-                        pattern += 'F';
-                    } else {
-                        pattern += 'X';
-                    }
-                } else {
-                    pattern += 'B'; // Border
-                }
+            avgScore: 0,
+            powerEffectiveness: {
+                freeze: { uses: 0, success: 0 },
+                shield: { uses: 0, success: 0 },
+                radar: { uses: 0, success: 0 },
+                safeburst: { uses: 0, success: 0 }
             }
-        }
-        return pattern;
+        };
+    }
+    
+    saveLearning() {
+        try {
+            localStorage.setItem('mineduel_ai_v3', JSON.stringify(this.learning));
+        } catch (e) {}
     }
 
-    // ==================== CORE AI FUNCTIONS ====================
-
+    // ==================== GAME LIFECYCLE ====================
+    
     start(board, gridSize) {
-        console.log('[BotAI] Starting advanced bot...');
-        
         this.board = board;
         this.gridSize = gridSize;
         this.isActive = true;
         this.isThinking = false;
-        this.moveHistory = [];
-        this.strategicState = {
-            lastPowerUsed: 0,
-            powerCooldown: 5000,
-            consecutiveSafeMoves: 0,
-            consecutiveMineHits: 0,
-            isDefensive: false,
-            isAggressive: false,
-            playerThreatLevel: 0
-        };
+        this.resetGameState();
         
-        if (!this.board || !this.board.grid) {
-            console.error('[BotAI] Board is null, cannot start!');
-            return;
-        }
-        
+        console.log(`[AI] Starting on ${gridSize}x${gridSize} board`);
         this.scheduleNextMove();
     }
-
+    
     stop() {
-        console.log('[BotAI] Stopping bot...');
         this.isActive = false;
-        this.isThinking = false;
         if (this.moveInterval) {
             clearTimeout(this.moveInterval);
             this.moveInterval = null;
         }
+        console.log('[AI] Stopped');
     }
-
-    getAdaptiveDelay() {
-        const { minDelay, maxDelay, reactionSpeed } = this.settings;
+    
+    resetGameState() {
+        this.probabilityMap.clear();
+        this.knownMines.clear();
+        this.knownSafe.clear();
+        this.flaggedCells.clear();
+        this.moveHistory = [];
+        this.stuckCounter = 0;
         
-        // Faster when behind, slower when ahead
-        let modifier = 1;
-        const playerScore = this.game?.score || 0;
-        const botScore = this.game?.opponentScore || 0;
-        const scoreDiff = playerScore - botScore;
+        this.strategy.powersUsed = { freeze: 0, shield: 0, radar: 0, safeburst: 0 };
+        this.strategy.lastPowerTime = 0;
+        this.strategy.mode = 'balanced';
         
-        if (scoreDiff > 50) {
-            // Player is ahead, play faster
-            modifier = 0.7;
-        } else if (scoreDiff < -30) {
-            // Bot is ahead, can play more carefully
-            modifier = 1.2;
-        }
+        this.gameStats = {
+            movesMade: 0,
+            minesHit: 0,
+            correctFlags: 0,
+            wrongFlags: 0,
+            decisionsAnalyzed: 0
+        };
         
-        // Time pressure - play faster near end
-        const timeRemaining = this.getTimeRemaining();
-        if (timeRemaining < 30000) {
-            modifier *= 0.6;
-        } else if (timeRemaining < 60000) {
-            modifier *= 0.8;
-        }
-        
-        const baseDelay = minDelay + Math.random() * (maxDelay - minDelay);
-        return Math.max(200, baseDelay * modifier);
+        this.boardAnalysis.opponentBoard.lastScoreCheck = Date.now();
+        this.boardAnalysis.opponentBoard.lastScore = 0;
     }
-
+    
+    // ==================== MAIN THINKING LOOP ====================
+    
     scheduleNextMove() {
         if (!this.isActive || this.game?.gameEnded) return;
         
-        this.moveInterval = setTimeout(() => {
-            this.makeMove();
-        }, this.getAdaptiveDelay());
-    }
-
-    async makeMove() {
-        if (!this.isActive || this.isThinking || this.game?.gameEnded) {
-            return;
-        }
+        const { min, max } = this.settings.thinkTime;
+        const delay = min + Math.random() * (max - min);
         
-        if (!this.board || !this.board.grid) {
-            console.error('[BotAI] Board not available!');
-            return;
-        }
+        this.moveInterval = setTimeout(() => this.think(), delay);
+    }
+    
+    async think() {
+        if (!this.isActive || this.isThinking || this.game?.gameEnded) return;
         
         // Check if frozen
         if (this.isFrozen && Date.now() < this.frozenUntil) {
-            const waitTime = this.frozenUntil - Date.now();
-            this.moveInterval = setTimeout(() => this.makeMove(), waitTime + 100);
+            this.scheduleNextMove();
             return;
         }
         this.isFrozen = false;
         
-        if (this.shouldStopPlaying()) {
-            console.log('[BotAI] No more valid moves, stopping');
-            this.stop();
-            return;
-        }
-        
         this.isThinking = true;
         this.game?.showBotThinking?.();
-
+        
         try {
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await this.delay(100);
             
-            if (!this.isActive || this.game?.gameEnded) {
-                this.isThinking = false;
-                this.game?.hideBotThinking?.();
-                return;
-            }
+            // STEP 1: ANALYZE GAME STATE
+            this.analyzeGameState();
             
-            // 1. STRATEGIC POWER DECISION - Most important
-            const powerDecision = this.makeStrategicPowerDecision();
-            if (powerDecision) {
-                console.log('[BotAI] Strategic power used:', powerDecision);
-                this.stuckCounter = 0; // Reset on successful power use
-                this.isThinking = false;
-                this.game?.hideBotThinking?.();
-                this.scheduleNextMove();
-                return;
-            }
+            // STEP 2: UPDATE STRATEGY
+            this.updateStrategy();
             
-            // 2. Check for stuck state and fix wrong flags
-            if (this.isStuck()) {
-                console.log('[BotAI] Detected stuck state, re-analyzing board...');
-                const wrongFlag = this.findAndRemoveWrongFlag();
-                if (wrongFlag) {
-                    console.log('[BotAI] Removed wrong flag at:', wrongFlag);
-                    this.stuckCounter = 0; // Reset on flag removal
-                    this.isThinking = false;
-                    this.game?.hideBotThinking?.();
-                    this.scheduleNextMove();
+            // STEP 3: CONSIDER POWER USAGE
+            if (this.shouldUsePower()) {
+                const powerUsed = this.selectAndUsePower();
+                if (powerUsed) {
+                    this.finishThinking();
                     return;
                 }
             }
             
-            // 3. Flag known mines
-            const mineToFlag = this.findCellToFlag();
-            if (mineToFlag) {
-                console.log('[BotAI] Flagging mine at:', mineToFlag);
-                this.game?.makeBotFlag?.(mineToFlag.x, mineToFlag.y);
-                this.stuckCounter = 0; // Reset on successful flag
-                this.isThinking = false;
-                this.game?.hideBotThinking?.();
-                this.scheduleNextMove();
-                return;
-            }
+            // STEP 4: MAKE BEST MOVE
+            const decision = this.makeDecision();
             
-            // 4. Make intelligent move
-            const move = this.findOptimalMove();
-            
-            if (move) {
-                const result = this.game?.makeBotMove?.(move.x, move.y);
-                if (result) {
-                    this.recordMove(move.x, move.y, result);
-                } else {
-                    // Move failed - increment stuck counter
-                    this.stuckCounter = (this.stuckCounter || 0) + 1;
-                }
+            if (decision) {
+                this.executeDecision(decision);
             } else {
-                // No move found - increment stuck counter and try to fix flags
-                this.stuckCounter = (this.stuckCounter || 0) + 1;
-                console.log('[BotAI] No valid move found, deep analysis... (stuck:', this.stuckCounter, ')');
-                const forcedFlagRemoval = this.forceRemoveAnyInconsistentFlag();
-                if (forcedFlagRemoval) {
-                    console.log('[BotAI] Force removed inconsistent flag at:', forcedFlagRemoval);
+                this.stuckCounter++;
+                if (this.stuckCounter >= 3) {
+                    this.tryRecovery();
                 }
             }
             
         } catch (error) {
-            console.error('[BotAI] Error:', error);
+            console.error('[AI] Error:', error);
         }
-
+        
+        this.finishThinking();
+    }
+    
+    finishThinking() {
         this.isThinking = false;
         this.game?.hideBotThinking?.();
-
+        
         if (this.isActive && !this.game?.gameEnded) {
             this.scheduleNextMove();
         }
     }
-
-    // ==================== STRATEGIC POWER SYSTEM ====================
     
-    // BOT CORE PRINCIPLE: "Winning = Highest Score. Powers cost score, so use wisely!"
-    // RULE: Use powers VERY sparingly - they cost precious points!
-
-    makeStrategicPowerDecision() {
-        if (!this.game) return null;
-        
-        const gameState = this.captureGameState();
-        const timeSinceLastPower = Date.now() - this.strategicState.lastPowerUsed;
-        
-        // STRICT COOLDOWN - wait at least 15 seconds between ANY power
-        if (timeSinceLastPower < this.strategicState.powerCooldown) {
-            return null;
-        }
-        
-        const playerScore = gameState.playerScore;
-        const botScore = gameState.botScore;
-        const timeRemaining = gameState.timeRemaining;
-        const timePercent = timeRemaining / (this.game?.matchDuration || 120000);
-        const scoreDiff = botScore - playerScore; // Positive = bot ahead
-        
-        // CONSERVATIVE APPROACH: Only use powers in critical situations
-        // If bot is ahead, NO NEED to use powers (preserve score lead!)
-        if (scoreDiff > 30) {
-            console.log('[BotAI] Ahead by 30+, conserving powers');
-            return null;
-        }
-        
-        const costs = { radar: 30, safeburst: 40, shield: 50, freeze: 60 };
-        
-        // ============ FREEZE STRATEGY ============
-        // ONLY USE when player is significantly ahead AND near end of game
-        // Check freeze-specific cooldown (60 seconds)
-        const timeSinceFreeze = Date.now() - (this.strategicState.lastFreezeTime || 0);
-        if (timeSinceFreeze < this.strategicState.freezeCooldown) {
-            // Skip freeze, still on cooldown
-        } else if (this.powerUsageThisGame.freeze < this.powerMaxUsage.freeze) {
-            // Freeze conditions: Player 50+ ahead AND time < 40%
-            const playerFarAhead = playerScore > botScore + 50;
-            const lateGame = timePercent < 0.4;
-            
-            if (playerFarAhead && lateGame && this.canUsePower('freeze')) {
-                if (botScore >= costs.freeze + 50) { // Need good buffer
-                    if (this.usePower('freeze')) {
-                        console.log(`[BotAI STRATEGY] FREEZE used - player ${playerScore - botScore} ahead, time ${Math.round(timePercent*100)}%`);
-                        this.strategicState.lastPowerUsed = Date.now();
-                        this.strategicState.lastFreezeTime = Date.now();
-                        this.powerUsageThisGame.freeze++;
-                        this.recordPowerUsage('freeze', true, gameState);
-                        return 'freeze';
-                    }
-                }
-            }
-        }
-        
-        // ============ SHIELD STRATEGY ============
-        // ONLY USE when bot is slightly ahead and wants to protect lead near end
-        if (this.powerUsageThisGame.shield < this.powerMaxUsage.shield) {
-            const botSlightlyAhead = scoreDiff > 10 && scoreDiff < 40;
-            const veryLateGame = timePercent < 0.2;
-            const noSafeMoves = this.findGuaranteedSafeCells().length === 0;
-            
-            if (botSlightlyAhead && veryLateGame && !this.game?.opponentHasShield && this.canUsePower('shield')) {
-                if (botScore >= costs.shield + 30) {
-                    if (this.usePower('shield')) {
-                        console.log(`[BotAI STRATEGY] SHIELD used - protecting lead, time ${Math.round(timePercent*100)}%`);
-                        this.strategicState.lastPowerUsed = Date.now();
-                        this.powerUsageThisGame.shield++;
-                        this.recordPowerUsage('shield', true, gameState);
-                        return 'shield';
-                    }
-                }
-            }
-        }
-        
-        // ============ RADAR STRATEGY ============
-        // ONLY USE when stuck with no safe moves AND hit mines recently
-        if (this.powerUsageThisGame.radar < this.powerMaxUsage.radar) {
-            const noSafeMoves = this.findGuaranteedSafeCells().length === 0;
-            const hitMinesRecently = this.strategicState.consecutiveMineHits >= 2;
-            
-            if (noSafeMoves && hitMinesRecently && this.canUsePower('radar')) {
-                if (botScore >= costs.radar + 20) {
-                    if (this.usePower('radar')) {
-                        console.log(`[BotAI STRATEGY] RADAR used - stuck and hit ${this.strategicState.consecutiveMineHits} mines`);
-                        this.strategicState.lastPowerUsed = Date.now();
-                        this.powerUsageThisGame.radar++;
-                        this.recordPowerUsage('radar', true, gameState);
-                        return 'radar';
-                    }
-                }
-            }
-        }
-        
-        // ============ SAFEBURST STRATEGY ============
-        // ALMOST NEVER USE - costs 40, gives ~15 = net loss of 25!
-        // Only use if VERY behind AND time running out
-        if (this.powerUsageThisGame.safeburst < this.powerMaxUsage.safeburst) {
-            const veryBehind = playerScore > botScore + 80;
-            const desperateTime = timePercent < 0.15;
-            
-            if (veryBehind && desperateTime && this.canUsePower('safeburst')) {
-                if (this.usePower('safeburst')) {
-                    console.log(`[BotAI STRATEGY] SAFEBURST used - desperate: ${playerScore - botScore} behind, ${Math.round(timePercent*100)}% time`);
-                    this.strategicState.lastPowerUsed = Date.now();
-                    this.powerUsageThisGame.safeburst++;
-                    this.recordPowerUsage('safeburst', true, gameState);
-                    return 'safeburst';
-                }
-            }
-        }
-        
-        return null;
-    }
-    
-    // Calculate the strategic value of using FREEZE
-    calculateFreezeValue(gameState) {
-        const playerScore = gameState.playerScore;
-        const botScore = gameState.botScore;
-        const scoreDiff = playerScore - botScore;
-        const timePercent = gameState.timeRemaining / (this.game?.matchDuration || 120000);
-        
-        let value = 0;
-        
-        // Base value: How much player could score in 5 seconds
-        const playerScoreRate = playerScore / Math.max(1, 120000 - gameState.timeRemaining) * 1000; // per second
-        value += playerScoreRate * 5; // 5 second freeze
-        
-        // Bonus if player is ahead
-        if (scoreDiff > 0) {
-            value += scoreDiff * 0.5;
-        }
-        
-        // Bonus in late game
-        if (timePercent < 0.3) {
-            value *= 1.5;
-        }
-        
-        // Bonus if player has high completion
-        if ((gameState.playerCompletion || 0) > 60) {
-            value += 30;
-        }
-        
-        return Math.round(value);
-    }
-    
-    // Calculate the strategic value of using SHIELD
-    calculateShieldValue(gameState) {
-        const botScore = gameState.botScore;
-        const scoreDiff = botScore - gameState.playerScore;
-        const timePercent = gameState.timeRemaining / (this.game?.matchDuration || 120000);
-        
-        let value = 0;
-        
-        // Value increases when bot is ahead (protecting lead)
-        if (scoreDiff > 0) {
-            value += scoreDiff * 0.3;
-        }
-        
-        // High value when about to make risky move
-        if (this.findGuaranteedSafeCells().length === 0) {
-            value += 40; // Protects against potential mine hit
-        }
-        
-        // Value increases near end of game
-        if (timePercent < 0.25 && scoreDiff > 0) {
-            value += 50;
-        }
-        
-        // Value if consecutive mine hits
-        if (this.strategicState.consecutiveMineHits >= 2) {
-            value += 30;
-        }
-        
-        return Math.round(value);
-    }
-    
-    // Calculate the strategic value of using RADAR
-    calculateRadarValue(gameState) {
-        let value = 0;
-        
-        // Base value: Prevents mine hits
-        // Each mine hit = -30 points, radar shows 3 mines
-        // Theoretical max value = 3 * 30 = 90, but realistically less
-        
-        // No safe cells = HIGH value
-        if (this.findGuaranteedSafeCells().length === 0) {
-            value += 60; // Very valuable when stuck
-        }
-        
-        // Consecutive mine hits = need radar
-        if (this.strategicState.consecutiveMineHits >= 1) {
-            value += 40;
-        }
-        
-        // Board uncertainty
-        const uncertainty = this.calculateBoardUncertainty();
-        value += uncertainty * 30;
-        
-        // Early game radar for reconnaissance
-        if (this.moveHistory.length < 5 && gameState.botScore >= 40) {
-            value += 20;
-        }
-        
-        return Math.round(value);
-    }
-    
-    // Calculate the strategic value of using SAFEBURST
-    calculateSafeburstValue(gameState) {
-        const scoreDiff = gameState.playerScore - gameState.botScore;
-        const timePercent = gameState.timeRemaining / (this.game?.matchDuration || 120000);
-        
-        let value = 0;
-        
-        // Base value: ~15 points from 3 safe cells
-        value = 15;
-        
-        // Bonus when behind
-        if (scoreDiff > 0) {
-            value += Math.min(scoreDiff * 0.3, 30);
-        }
-        
-        // Time pressure bonus
-        if (timePercent < 0.3 && scoreDiff > 30) {
-            value += 20;
-        }
-        
-        return Math.round(value);
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    calculatePlayerThreat(gameState) {
-        let threat = 0;
-        
-        // Score difference factor
-        const scoreDiff = gameState.playerScore - gameState.botScore;
-        threat += Math.max(0, scoreDiff / 100);
-        
-        // Completion factor
-        threat += (gameState.playerCompletion || 0) / 100;
-        
-        // Time factor - threat increases as time decreases if player ahead
-        if (scoreDiff > 0) {
-            const timePercent = gameState.timeRemaining / (this.game?.matchDuration || 120000);
-            threat += (1 - timePercent) * 0.3;
-        }
-        
-        return Math.min(1, threat);
+    // ==================== GAME STATE ANALYSIS ====================
+    
+    analyzeGameState() {
+        this.analyzeMyBoard();
+        this.analyzeOpponentBoard();
+        this.gameStats.decisionsAnalyzed++;
     }
-
-    calculateBoardUncertainty() {
-        if (!this.board || !this.board.grid) return 1;
+    
+    analyzeMyBoard() {
+        if (!this.board?.grid) return;
         
+        let revealed = 0;
+        let flagged = 0;
         let unrevealed = 0;
-        let total = 0;
         
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
-                total++;
-                if (!this.board.grid[y][x].isRevealed) {
+                const cell = this.board.grid[y][x];
+                if (cell.isRevealed) {
+                    revealed++;
+                } else if (cell.isFlagged) {
+                    flagged++;
+                    this.flaggedCells.add(`${x},${y}`);
+                } else {
                     unrevealed++;
                 }
             }
         }
         
-        return unrevealed / total;
-    }
-
-    calculateBoardCompletion() {
-        if (!this.board || !this.board.grid) return 0;
+        const totalCells = this.gridSize * this.gridSize;
+        const mineCount = this.board.mines?.length || 0;
+        const safeCells = totalCells - mineCount;
         
-        let revealed = 0;
-        let totalSafe = 0;
-        
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                const cell = this.board.grid[y][x];
-                if (!cell.isMine) {
-                    totalSafe++;
-                    if (cell.isRevealed) revealed++;
-                }
-            }
-        }
-        
-        return totalSafe > 0 ? (revealed / totalSafe) * 100 : 0;
-    }
-
-    getTimeRemaining() {
-        if (!this.game) return 120000;
-        const elapsed = Date.now() - (this.game.matchStartTime || Date.now());
-        return Math.max(0, (this.game.matchDuration || 120000) - elapsed);
-    }
-
-    canUsePower(power) {
-        const costs = this.game?.CONFIG?.POWER_COSTS || { radar: 30, safeburst: 40, shield: 50, freeze: 60 };
-        const cost = costs[power] || 999;
-        const botScore = this.game?.opponentScore || 0;
-        const usesLeft = this.game?.botPowerUsesLeft?.[power];
-        
-        // If uses tracking exists, check it
-        if (usesLeft !== undefined && usesLeft <= 0) {
-            return false;
-        }
-        
-        return botScore >= cost;
-    }
-
-    usePower(power) {
-        if (!this.game) return false;
-        
-        const costs = this.game?.CONFIG?.POWER_COSTS || { radar: 30, safeburst: 40, shield: 50, freeze: 60 };
-        const cost = costs[power] || 999;
-        
-        // Use the game's power system
-        if (typeof this.game.useBotPower === 'function') {
-            return this.game.useBotPower(power, cost);
-        }
-        
-        // Fallback: Direct power execution
-        return this.executePowerDirectly(power, cost);
-    }
-
-    executePowerDirectly(power, cost) {
-        if (!this.game) return false;
-        
-        const botScore = this.game.opponentScore || 0;
-        if (botScore < cost) return false;
-        
-        // Deduct cost
-        this.game.opponentScore -= cost;
-        this.game.updateScoreDisplay?.();
-        
-        switch (power) {
-            case 'freeze':
-                // Freeze the player
-                this.freezePlayer(5000);
-                this.game.showNotification?.('❄️ Bot used FREEZE on you!', 'warning');
-                return true;
-                
-            case 'shield':
-                // Bot gains shield
-                this.game.opponentHasShield = true;
-                this.game.showNotification?.('🛡️ Bot activated SHIELD!', 'info');
-                return true;
-                
-            case 'radar':
-                // Bot uses radar (internal use only)
-                this.applyRadarKnowledge();
-                this.game.showNotification?.('📡 Bot used RADAR!', 'info');
-                return true;
-                
-            case 'safeburst':
-                // Bot reveals safe cells
-                this.applySafeBurst();
-                this.game.showNotification?.('💥 Bot used SAFE BURST!', 'info');
-                return true;
-        }
-        
-        return false;
-    }
-
-    freezePlayer(duration) {
-        if (!this.game) return;
-        
-        this.game.playerFrozen = true;
-        this.game.playerFrozenUntil = Date.now() + duration;
-        
-        // Show freeze overlay
-        const overlay = document.getElementById('player-frozen');
-        const timerDisplay = document.getElementById('frozen-timer') || document.getElementById('player-freeze-timer');
-        
-        if (overlay) {
-            overlay.classList.remove('hidden');
-        }
-        
-        const updateTimer = () => {
-            const remaining = Math.max(0, (this.game.playerFrozenUntil || 0) - Date.now());
-            if (timerDisplay) {
-                timerDisplay.textContent = `${Math.ceil(remaining / 1000)}s`;
-            }
-            
-            if (remaining <= 0) {
-                this.game.playerFrozen = false;
-                if (overlay) {
-                    overlay.classList.add('hidden');
-                }
-            } else {
-                requestAnimationFrame(updateTimer);
-            }
+        this.boardAnalysis.myBoard = {
+            revealedCells: revealed,
+            flaggedCells: flagged,
+            safeCellsRemaining: safeCells - revealed,
+            minesRemaining: mineCount - flagged,
+            completionPercent: safeCells > 0 ? (revealed / safeCells) * 100 : 0,
+            totalUnrevealed: unrevealed
         };
         
-        updateTimer();
-    }
-
-    applyRadarKnowledge() {
-        // Mark some mines as known internally for better decision making
-        if (!this.board || !this.board.grid) return;
-        
-        const mines = [];
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                if (this.board.grid[y][x].isMine && !this.board.grid[y][x].isRevealed && !this.board.grid[y][x].isFlagged) {
-                    mines.push({ x, y });
-                }
-            }
+        // Update probability map
+        if (this.settings.useProbability) {
+            this.calculateProbabilities();
         }
-        
-        // Mark 3 random mines as known
-        const knownMines = mines.sort(() => Math.random() - 0.5).slice(0, 3);
-        console.log('[BotAI] Radar detected mines:', knownMines);
-        
-        knownMines.forEach(pos => {
-            const key = `${pos.x},${pos.y}`;
-            // Add to pattern cache
-            this.patternCache.set(key, 'KNOWN_MINE');
-            // Add to radar detected mines set
-            this.radarDetectedMines.add(key);
-            console.log('[BotAI] Radar: Mine at', pos.x, pos.y, 'saved to memory');
-        });
-        
-        // Immediately flag the detected mines
-        this.flagRadarDetectedMines();
     }
     
-    // Flag mines that were detected by radar
-    flagRadarDetectedMines() {
-        if (!this.game?.makeBotFlag) return;
+    analyzeOpponentBoard() {
+        if (!this.game) return;
         
-        for (const key of this.radarDetectedMines) {
-            const [x, y] = key.split(',').map(Number);
-            const cell = this.board?.grid?.[y]?.[x];
+        const now = Date.now();
+        const playerScore = this.game.score || 0;
+        const timeDelta = (now - this.boardAnalysis.opponentBoard.lastScoreCheck) / 1000;
+        
+        if (timeDelta > 0.5) {
+            const scoreDelta = playerScore - this.boardAnalysis.opponentBoard.lastScore;
+            this.boardAnalysis.opponentBoard.scoreRate = scoreDelta / timeDelta;
             
-            // Only flag if not already flagged or revealed
-            if (cell && !cell.isFlagged && !cell.isRevealed) {
-                console.log('[BotAI] Flagging radar-detected mine at', x, y);
-                this.game.makeBotFlag(x, y);
+            if (scoreDelta > 15) {
+                this.boardAnalysis.opponentBoard.isOnStreak = true;
+                this.boardAnalysis.opponentBoard.streakLength++;
+            } else {
+                this.boardAnalysis.opponentBoard.isOnStreak = false;
+                this.boardAnalysis.opponentBoard.streakLength = 0;
             }
+            
+            this.boardAnalysis.opponentBoard.lastScore = playerScore;
+            this.boardAnalysis.opponentBoard.lastScoreCheck = now;
         }
+        
+        const estimatedCells = Math.floor(playerScore / 5);
+        const mineCount = this.game.mineCount || 15;
+        const totalSafeCells = (this.gridSize * this.gridSize) - mineCount;
+        this.boardAnalysis.opponentBoard.estimatedCompletion = Math.min(100, (estimatedCells / totalSafeCells) * 100);
     }
+
+    // ==================== PROBABILITY CALCULATION (CSP) ====================
     
-    // Check if a cell is a known mine from radar
-    isRadarDetectedMine(x, y) {
-        return this.radarDetectedMines.has(`${x},${y}`);
-    }
-
-    applySafeBurst() {
-        if (!this.board || !this.board.grid) return;
+    calculateProbabilities() {
+        if (!this.board?.grid) return;
         
-        // Find and reveal 3 safe cells
-        const safeCells = [];
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                const cell = this.board.grid[y][x];
-                if (!cell.isMine && !cell.isRevealed && !cell.isFlagged) {
-                    safeCells.push({ x, y });
-                }
-            }
-        }
+        this.probabilityMap.clear();
+        this.knownSafe.clear();
+        this.knownMines.clear();
         
-        const toReveal = safeCells.sort(() => Math.random() - 0.5).slice(0, 3);
-        let totalPoints = 0;
-        
-        toReveal.forEach(pos => {
-            const result = this.game?.makeBotMove?.(pos.x, pos.y);
-            if (result && result.points) {
-                totalPoints += result.points;
-            }
-        });
-        
-        return totalPoints;
-    }
-
-    // ==================== MOVE FINDING ALGORITHMS ====================
-
-    findOptimalMove() {
-        // 0. First, flag any radar-detected mines we haven't flagged yet
-        this.flagRadarDetectedMines();
-        
-        // 1. Find guaranteed safe cells
-        const safeCells = this.findGuaranteedSafeCells();
-        
-        if (safeCells.length > 0) {
-            // Use learning to pick best safe cell
-            return this.pickBestSafeCell(safeCells);
-        }
-        
-        // 2. Find cells with probability analysis
-        const probabilityMap = this.calculateMineProbabilities();
-        
-        // 3. Get all unrevealed cells sorted by safety
-        // IMPORTANT: Filter out radar-detected mines and known mines
-        const candidates = this.getAllUnrevealedCells()
-            .filter(cell => {
-                const key = `${cell.x},${cell.y}`;
-                // Skip known mines from pattern cache
-                if (this.patternCache.get(key) === 'KNOWN_MINE') return false;
-                // Skip radar-detected mines
-                if (this.radarDetectedMines.has(key)) return false;
-                // Skip flagged cells
-                if (this.board?.grid?.[cell.y]?.[cell.x]?.isFlagged) return false;
-                return true;
-            })
-            .map(cell => ({
-                ...cell,
-                probability: probabilityMap.get(`${cell.x},${cell.y}`) || 0.5,
-                learningScore: this.getLearningScore(cell.x, cell.y)
-            }))
-            .sort((a, b) => {
-                // Combined score: lower probability and higher learning score is better
-                const scoreA = a.probability - a.learningScore * 0.1;
-                const scoreB = b.probability - b.learningScore * 0.1;
-                return scoreA - scoreB;
-            });
-        
-        if (candidates.length === 0) return null;
-        
-        // Apply mistake chance for non-expert bots
-        if (Math.random() < this.settings.mistakeChance) {
-            const randomIndex = Math.floor(Math.random() * Math.min(5, candidates.length));
-            return candidates[randomIndex];
-        }
-        
-        // Pick from top candidates with weighted randomness
-        const topCount = Math.min(3, candidates.length);
-        const topCandidates = candidates.slice(0, topCount);
-        
-        // Weighted selection favoring first (safest) candidate
-        const weights = topCandidates.map((_, i) => Math.pow(0.5, i));
-        const totalWeight = weights.reduce((a, b) => a + b, 0);
-        let random = Math.random() * totalWeight;
-        
-        for (let i = 0; i < topCandidates.length; i++) {
-            random -= weights[i];
-            if (random <= 0) {
-                return topCandidates[i];
-            }
-        }
-        
-        return topCandidates[0];
-    }
-
-    calculateMineProbabilities() {
-        const probabilities = new Map();
-        
-        if (!this.board || !this.board.grid) return probabilities;
-        
-        // Initialize all unrevealed cells with base probability
-        const totalMines = this.game?.mineCount || 15;
-        let remainingMines = totalMines;
-        let unrevealedCount = 0;
-        
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                const cell = this.board.grid[y][x];
-                if (cell.isRevealed && cell.isMine) remainingMines--;
-                if (!cell.isRevealed && !cell.isFlagged) unrevealedCount++;
-                if (cell.isFlagged) remainingMines--;
-            }
-        }
-        
-        const baseProbability = unrevealedCount > 0 ? remainingMines / unrevealedCount : 0;
-        
-        // Set base probability for all unrevealed cells
+        const unrevealed = [];
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.board.grid[y][x];
                 if (!cell.isRevealed && !cell.isFlagged) {
-                    probabilities.set(`${x},${y}`, baseProbability);
+                    unrevealed.push({ x, y });
                 }
             }
         }
         
-        // Refine based on numbered cells
+        const totalMines = this.board.mines?.length || 15;
+        const flaggedCount = this.flaggedCells.size;
+        const remainingMines = totalMines - flaggedCount;
+        const baseProbability = unrevealed.length > 0 ? remainingMines / unrevealed.length : 0;
+        
+        unrevealed.forEach(cell => {
+            this.probabilityMap.set(`${cell.x},${cell.y}`, baseProbability);
+        });
+        
+        if (this.settings.useCSP) {
+            this.applyCSPConstraints();
+        }
+    }
+    
+    applyCSPConstraints() {
+        // Apply constraints from revealed number cells
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.board.grid[y][x];
-                if (!cell.isRevealed || cell.isMine || cell.neighborCount === 0) continue;
-                
-                const neighbors = this.getNeighbors(x, y);
-                const unrevealedNeighbors = neighbors.filter(n => 
-                    !this.board.grid[n.y][n.x].isRevealed && !this.board.grid[n.y][n.x].isFlagged
-                );
-                const flaggedCount = neighbors.filter(n => 
-                    this.board.grid[n.y][n.x].isFlagged
-                ).length;
-                
-                const remainingMinesAround = cell.neighborCount - flaggedCount;
-                
-                if (unrevealedNeighbors.length > 0 && remainingMinesAround > 0) {
-                    const localProbability = remainingMinesAround / unrevealedNeighbors.length;
-                    
-                    // Update probabilities for these neighbors
-                    for (const n of unrevealedNeighbors) {
-                        const key = `${n.x},${n.y}`;
-                        const current = probabilities.get(key) || baseProbability;
-                        // Combine probabilities (take max for safety)
-                        probabilities.set(key, Math.max(current, localProbability));
-                    }
-                } else if (remainingMinesAround === 0) {
-                    // All remaining neighbors are safe
-                    for (const n of unrevealedNeighbors) {
-                        probabilities.set(`${n.x},${n.y}`, 0);
-                    }
-                } else if (unrevealedNeighbors.length === remainingMinesAround) {
-                    // All remaining neighbors are mines
-                    for (const n of unrevealedNeighbors) {
-                        probabilities.set(`${n.x},${n.y}`, 1);
-                    }
-                }
-            }
-        }
-        
-        return probabilities;
-    }
-
-    getLearningScore(x, y) {
-        const patternKey = this.generatePatternKey(x, y);
-        const pattern = this.learningData.cellPatterns[patternKey];
-        
-        if (!pattern) return 0;
-        
-        const total = pattern.safe + pattern.mine;
-        if (total === 0) return 0;
-        
-        // Return a score where higher is safer
-        return (pattern.safe - pattern.mine) / total;
-    }
-
-    findGuaranteedSafeCells() {
-        const safeCells = [];
-        const checked = new Set();
-        
-        if (!this.board || !this.board.grid) return safeCells;
-        
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                const cell = this.board.grid[y][x];
-                
-                if (!cell.isRevealed || cell.isMine) continue;
-                
-                const neighbors = this.getNeighbors(x, y);
-                const unrevealedNeighbors = neighbors.filter(n => 
-                    !this.board.grid[n.y][n.x].isRevealed
-                );
-                const flaggedNeighbors = neighbors.filter(n => 
-                    this.board.grid[n.y][n.x].isFlagged
-                );
-                
-                // If all mines are flagged, remaining are safe
-                if (cell.neighborCount === flaggedNeighbors.length) {
-                    for (const n of unrevealedNeighbors) {
-                        if (!this.board.grid[n.y][n.x].isFlagged) {
-                            const key = `${n.x},${n.y}`;
-                            if (!checked.has(key)) {
-                                checked.add(key);
-                                safeCells.push(n);
-                            }
-                        }
-                    }
-                }
-                
-                // Zero cells mean all neighbors are safe
-                if (cell.neighborCount === 0) {
-                    for (const n of unrevealedNeighbors) {
-                        const key = `${n.x},${n.y}`;
-                        if (!checked.has(key)) {
-                            checked.add(key);
-                            safeCells.push(n);
-                        }
-                    }
-                }
-            }
-        }
-        
-        return safeCells;
-    }
-
-    // Check if bot is stuck (no safe moves and no valid flags)
-    isStuck() {
-        const safeCells = this.findGuaranteedSafeCells();
-        if (safeCells.length > 0) return false;
-        
-        const allUnrevealed = this.getAllUnrevealedCells();
-        if (allUnrevealed.length === 0) return false;
-        
-        // Consider stuck after 3 attempts with no progress
-        return (this.stuckCounter || 0) >= 3;
-    }
-
-    // Find and remove a wrong flag by analyzing board consistency
-    findAndRemoveWrongFlag() {
-        if (!this.board || !this.board.grid) return null;
-        
-        // Get all flagged cells
-        const flaggedCells = [];
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                if (this.board.grid[y][x].isFlagged) {
-                    flaggedCells.push({ x, y });
-                }
-            }
-        }
-        
-        if (flaggedCells.length === 0) return null;
-        
-        // Check each flag for consistency
-        for (const flag of flaggedCells) {
-            if (this.isFlagInconsistent(flag.x, flag.y)) {
-                // Remove this flag
-                this.removeFlag(flag.x, flag.y);
-                this.stuckCounter = 0; // Reset stuck counter
-                return flag;
-            }
-        }
-        
-        return null;
-    }
-
-    // Check if a flag creates an impossible situation
-    isFlagInconsistent(flagX, flagY) {
-        if (!this.board || !this.board.grid) return false;
-        
-        const neighbors = this.getNeighbors(flagX, flagY);
-        
-        for (const n of neighbors) {
-            const cell = this.board.grid[n.y][n.x];
-            if (!cell.isRevealed || cell.isMine) continue;
-            
-            // Count flags around this revealed cell
-            const cellNeighbors = this.getNeighbors(n.x, n.y);
-            const flagCount = cellNeighbors.filter(cn => 
-                this.board.grid[cn.y][cn.x].isFlagged
-            ).length;
-            
-            // If there are more flags than the cell's number, something is wrong
-            if (flagCount > cell.neighborCount) {
-                console.log(`[BotAI] Flag at (${flagX},${flagY}) causes inconsistency: cell (${n.x},${n.y}) has ${flagCount} flags but needs ${cell.neighborCount}`);
-                return true;
-            }
-        }
-        
-        return false;
-    }
-
-    // Force remove any flag that might be causing issues
-    forceRemoveAnyInconsistentFlag() {
-        if (!this.board || !this.board.grid) return null;
-        
-        // Get all flagged cells sorted by suspicion score
-        const flaggedCells = [];
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                if (this.board.grid[y][x].isFlagged) {
-                    const suspicionScore = this.calculateFlagSuspicion(x, y);
-                    flaggedCells.push({ x, y, suspicion: suspicionScore });
-                }
-            }
-        }
-        
-        if (flaggedCells.length === 0) return null;
-        
-        // Sort by suspicion (highest first)
-        flaggedCells.sort((a, b) => b.suspicion - a.suspicion);
-        
-        // Remove the most suspicious flag
-        const toRemove = flaggedCells[0];
-        if (toRemove.suspicion > 0) {
-            this.removeFlag(toRemove.x, toRemove.y);
-            this.stuckCounter = 0;
-            return toRemove;
-        }
-        
-        // If no suspicious flags, try removing oldest flag
-        if (flaggedCells.length > 0) {
-            const oldest = flaggedCells[flaggedCells.length - 1];
-            this.removeFlag(oldest.x, oldest.y);
-            this.stuckCounter = 0;
-            return oldest;
-        }
-        
-        return null;
-    }
-
-    // Calculate how suspicious a flag is
-    calculateFlagSuspicion(flagX, flagY) {
-        if (!this.board || !this.board.grid) return 0;
-        
-        let suspicion = 0;
-        const neighbors = this.getNeighbors(flagX, flagY);
-        
-        let hasRevealedNeighbor = false;
-        
-        for (const n of neighbors) {
-            const cell = this.board.grid[n.y][n.x];
-            if (!cell.isRevealed || cell.isMine) continue;
-            
-            hasRevealedNeighbor = true;
-            
-            const cellNeighbors = this.getNeighbors(n.x, n.y);
-            const flagCount = cellNeighbors.filter(cn => 
-                this.board.grid[cn.y][cn.x].isFlagged
-            ).length;
-            const unrevealedCount = cellNeighbors.filter(cn => 
-                !this.board.grid[cn.y][cn.x].isRevealed && !this.board.grid[cn.y][cn.x].isFlagged
-            ).length;
-            
-            // High suspicion if too many flags
-            if (flagCount > cell.neighborCount) {
-                suspicion += 10;
-            }
-            
-            // Medium suspicion if flags equal to number but still have unrevealed cells
-            // that could also be mines
-            if (flagCount === cell.neighborCount && unrevealedCount > 0) {
-                // This is actually a good flag, reduce suspicion
-                suspicion -= 2;
-            }
-            
-            // If cell has more remaining unrevealed than remaining mines, flag might be wrong
-            const remainingMines = cell.neighborCount - flagCount;
-            if (remainingMines < 0) {
-                suspicion += 5;
-            }
-        }
-        
-        // Flags with no revealed neighbors are more suspicious
-        if (!hasRevealedNeighbor) {
-            suspicion += 3;
-        }
-        
-        return suspicion;
-    }
-
-    // Remove a flag from the board
-    removeFlag(x, y) {
-        if (!this.board || !this.board.grid) return false;
-        const cell = this.board.grid[y][x];
-        if (cell.isFlagged) {
-            // Use game's unflag function if available
-            if (this.game?.makeBotUnflag) {
-                return this.game.makeBotUnflag(x, y);
-            } else {
-                // Fallback: Direct modification
-                cell.isFlagged = false;
-                this.board.render();
-                console.log('[BotAI] Removed flag at', x, y);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    findCellToFlag() {
-        if (!this.board || !this.board.grid) return null;
-        
-        // Find cells that are DEFINITELY mines based on constraint satisfaction
-        const confirmedMines = new Map(); // Key: "x,y" -> confirmation count
-        
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                const cell = this.board.grid[y][x];
-                
                 if (!cell.isRevealed || cell.isMine || cell.neighborCount === 0) continue;
                 
                 const neighbors = this.getNeighbors(x, y);
@@ -1361,115 +426,45 @@ export class BotAI {
                     const nc = this.board.grid[n.y][n.x];
                     return !nc.isRevealed && !nc.isFlagged;
                 });
-                const flaggedCount = neighbors.filter(n => 
+                const flaggedNeighbors = neighbors.filter(n => 
                     this.board.grid[n.y][n.x].isFlagged
                 ).length;
                 
-                const remainingMines = cell.neighborCount - flaggedCount;
+                const remainingMines = cell.neighborCount - flaggedNeighbors;
                 
-                // If number of unrevealed == remaining mines, all are mines
-                if (remainingMines > 0 && unrevealedNeighbors.length === remainingMines) {
-                    for (const n of unrevealedNeighbors) {
+                if (unrevealedNeighbors.length === 0) continue;
+                
+                // All unrevealed neighbors are mines
+                if (remainingMines === unrevealedNeighbors.length && remainingMines > 0) {
+                    unrevealedNeighbors.forEach(n => {
                         const key = `${n.x},${n.y}`;
-                        confirmedMines.set(key, (confirmedMines.get(key) || 0) + 1);
-                    }
+                        this.probabilityMap.set(key, 1.0);
+                        this.knownMines.add(key);
+                    });
                 }
-            }
-        }
-        
-        // Find cells confirmed by at least 1 number cell
-        // Prefer cells confirmed by multiple neighbors
-        let bestCandidate = null;
-        let bestConfirmations = 0;
-        
-        for (const [key, confirmations] of confirmedMines) {
-            if (confirmations > bestConfirmations) {
-                const [x, y] = key.split(',').map(Number);
-                const cell = this.board.grid[y][x];
                 
-                // Double-check: make sure it's not already flagged or revealed
-                if (!cell.isFlagged && !cell.isRevealed) {
-                    bestCandidate = { x, y };
-                    bestConfirmations = confirmations;
+                // All neighbors are safe
+                if (remainingMines === 0) {
+                    unrevealedNeighbors.forEach(n => {
+                        const key = `${n.x},${n.y}`;
+                        this.probabilityMap.set(key, 0.0);
+                        this.knownSafe.add(key);
+                    });
+                }
+                
+                // Probability calculation
+                if (remainingMines > 0 && remainingMines < unrevealedNeighbors.length) {
+                    const probability = remainingMines / unrevealedNeighbors.length;
+                    unrevealedNeighbors.forEach(n => {
+                        const key = `${n.x},${n.y}`;
+                        const current = this.probabilityMap.get(key) || 0.5;
+                        this.probabilityMap.set(key, Math.max(current, probability));
+                    });
                 }
             }
         }
-        
-        // Only flag if we have at least 1 confirmation
-        if (bestCandidate && bestConfirmations >= 1) {
-            console.log(`[BotAI] Flagging mine with ${bestConfirmations} confirmations`);
-            return bestCandidate;
-        }
-        
-        return null;
     }
-
-    pickBestSafeCell(safeCells) {
-        if (safeCells.length === 0) return null;
-        
-        // Score each cell
-        const scored = safeCells.map(cell => {
-            let score = 0;
-            
-            // Prefer cells that might reveal more (adjacent to 0 cells)
-            const neighbors = this.getNeighbors(cell.x, cell.y);
-            for (const n of neighbors) {
-                const nc = this.board.grid[n.y][n.x];
-                if (nc.isRevealed && nc.neighborCount === 0) {
-                    score += 10; // High priority
-                }
-                if (nc.isRevealed && !nc.isMine) {
-                    score += 2;
-                }
-            }
-            
-            // Add learning score
-            score += this.getLearningScore(cell.x, cell.y) * 5;
-            
-            return { cell, score };
-        });
-        
-        scored.sort((a, b) => b.score - a.score);
-        
-        // Pick from top candidates
-        const topCount = Math.min(3, scored.length);
-        const topCandidates = scored.slice(0, topCount);
-        
-        return this.pickRandom(topCandidates.map(s => s.cell));
-    }
-
-    shouldStopPlaying() {
-        if (!this.board || !this.board.grid) return true;
-        
-        let unrevealedSafeCells = 0;
-        
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                const cell = this.board.grid[y][x];
-                if (!cell.isMine && !cell.isRevealed) {
-                    unrevealedSafeCells++;
-                }
-            }
-        }
-        
-        return unrevealedSafeCells === 0;
-    }
-
-    getAllUnrevealedCells() {
-        const cells = [];
-        if (!this.board || !this.board.grid) return cells;
-        
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                const cell = this.board.grid[y][x];
-                if (!cell.isRevealed && !cell.isFlagged) {
-                    cells.push({ x, y });
-                }
-            }
-        }
-        return cells;
-    }
-
+    
     getNeighbors(x, y) {
         const neighbors = [];
         for (let dy = -1; dy <= 1; dy++) {
@@ -1485,72 +480,385 @@ export class BotAI {
         return neighbors;
     }
 
-    pickRandom(array) {
-        if (!array || array.length === 0) return null;
-        return array[Math.floor(Math.random() * array.length)];
-    }
-
-    // ==================== FREEZE HANDLING ====================
-
-    freeze(duration = 5000) {
-        this.isFrozen = true;
-        this.frozenUntil = Date.now() + duration;
+    // ==================== STRATEGY SYSTEM ====================
+    
+    updateStrategy() {
+        const myScore = this.game?.opponentScore || 0;
+        const playerScore = this.game?.score || 0;
+        const scoreDiff = myScore - playerScore;
         
-        const opponentFrozen = document.getElementById('opponent-frozen');
-        const freezeTimer = document.getElementById('opponent-freeze-timer');
+        const timeRemaining = this.getTimeRemaining();
+        const totalTime = this.game?.matchDuration || 120000;
+        const timePercent = timeRemaining / totalTime;
         
-        if (opponentFrozen) {
-            opponentFrozen.classList.remove('hidden');
+        // Determine strategy mode
+        let newMode = 'balanced';
+        
+        if (scoreDiff > 50 && timePercent < 0.5) {
+            newMode = 'defensive';
+            this.strategy.riskTolerance = 0.15;
+        } else if (scoreDiff < -50 && timePercent < 0.25) {
+            newMode = 'desperate';
+            this.strategy.riskTolerance = 0.6;
+        } else if (scoreDiff < -30) {
+            newMode = 'aggressive';
+            this.strategy.riskTolerance = 0.45;
+        } else if (scoreDiff > 30) {
+            newMode = 'defensive';
+            this.strategy.riskTolerance = 0.2;
+        } else {
+            newMode = 'balanced';
+            this.strategy.riskTolerance = 0.3;
         }
         
-        const updateTimer = setInterval(() => {
-            const remaining = Math.max(0, this.frozenUntil - Date.now());
-            if (freezeTimer) {
-                freezeTimer.textContent = `${Math.ceil(remaining / 1000)}s`;
-            }
-            
-            if (remaining <= 0) {
-                clearInterval(updateTimer);
-                this.isFrozen = false;
-                if (opponentFrozen) {
-                    opponentFrozen.classList.add('hidden');
-                }
-            }
-        }, 100);
+        if (newMode !== this.strategy.mode) {
+            console.log(`[AI] Strategy: ${this.strategy.mode} -> ${newMode} (diff: ${scoreDiff})`);
+            this.strategy.mode = newMode;
+        }
+        
+        this.strategy.powerBudget = Math.max(0, myScore - playerScore - 40);
+        this.strategy.targetScore = playerScore + 30;
+    }
+    
+    getTimeRemaining() {
+        if (!this.game) return 60000;
+        const elapsed = Date.now() - (this.game.matchStartTime || Date.now());
+        return Math.max(0, (this.game.matchDuration || 120000) - elapsed);
     }
 
-    // ==================== OPPONENT ANALYSIS ====================
+    // ==================== POWER DECISION SYSTEM ====================
+    
+    shouldUsePower() {
+        const timeSinceLast = Date.now() - this.strategy.lastPowerTime;
+        if (timeSinceLast < this.strategy.powerCooldown) return false;
+        
+        const myScore = this.game?.opponentScore || 0;
+        // Minimum skor: en ucuz güç (radar=30) + biraz pay
+        if (myScore < 40) return false;
+        
+        return true;
+    }
+    
+    selectAndUsePower() {
+        const myScore = this.game?.opponentScore || 0;
+        const playerScore = this.game?.score || 0;
+        const scoreDiff = myScore - playerScore;
+        const timePercent = this.getTimeRemaining() / (this.game?.matchDuration || 120000);
+        
+        const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
+        
+        console.log(`[AI POWER] Evaluating powers - myScore: ${myScore}, playerScore: ${playerScore}, diff: ${scoreDiff}, timeLeft: ${(timePercent * 100).toFixed(1)}%`);
+        
+        // ============ FREEZE ============
+        // Oyuncu önde gidiyorsa veya çok hızlıysa dondur
+        if (this.strategy.powersUsed.freeze < this.strategy.powerLimits.freeze) {
+            const playerAhead = playerScore > myScore + 30; // 30 puan önde
+            const playerFast = this.boardAnalysis.opponentBoard.scoreRate > 8; // Hızlı oynuyor
+            const midToLateGame = timePercent < 0.70; // Oyunun %70'i geçmiş
+            const canAfford = myScore >= costs.freeze + 20;
+            
+            if (canAfford && midToLateGame && (playerAhead || playerFast)) {
+                console.log(`[AI POWER] FREEZE conditions met - ahead: ${playerAhead}, fast: ${playerFast}`);
+                if (this.usePower('freeze')) {
+                    return true;
+                }
+            }
+        }
+        
+        // ============ RADAR ============
+        // Güvenli hücre bulamadığında veya rastgele şansla
+        if (this.strategy.powersUsed.radar < this.strategy.powerLimits.radar) {
+            const noSafeCells = this.knownSafe.size === 0;
+            const stuck = this.stuckCounter >= 1;
+            const randomChance = Math.random() < 0.15; // %15 şans
+            const canAfford = myScore >= costs.radar + 10;
+            
+            if (canAfford && (noSafeCells || stuck || randomChance)) {
+                console.log(`[AI POWER] RADAR conditions met - noSafe: ${noSafeCells}, stuck: ${stuck}`);
+                if (this.usePower('radar')) {
+                    return true;
+                }
+            }
+        }
+        
+        // ============ SAFEBURST ============
+        // Gerideyken veya oyunun ortasında hız kazanmak için
+        if (this.strategy.powersUsed.safeburst < this.strategy.powerLimits.safeburst) {
+            const behind = playerScore > myScore + 20;
+            const midGame = timePercent < 0.60 && timePercent > 0.20;
+            const canAfford = myScore >= costs.safeburst + 15;
+            
+            if (canAfford && behind && midGame) {
+                console.log(`[AI POWER] SAFEBURST conditions met - behind by ${playerScore - myScore}`);
+                if (this.usePower('safeburst')) {
+                    return true;
+                }
+            }
+        }
+        
+        // ============ SHIELD ============
+        // Öndeyken ve oyunun sonuna yaklaşırken koruma
+        if (this.strategy.powersUsed.shield < this.strategy.powerLimits.shield) {
+            const ahead = scoreDiff > 15;
+            const lateGame = timePercent < 0.35; // Son %35
+            const canAfford = myScore >= costs.shield + 20;
+            
+            if (canAfford && ahead && lateGame) {
+                console.log(`[AI POWER] SHIELD conditions met - ahead by ${scoreDiff}`);
+                if (this.usePower('shield')) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    usePower(power) {
+        if (!this.game?.useBotPower) return false;
+        
+        const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
+        const cost = costs[power];
+        
+        if (this.game.useBotPower(power, cost)) {
+            this.strategy.powersUsed[power]++;
+            this.strategy.lastPowerTime = Date.now();
+            this.learning.powerEffectiveness[power].uses++;
+            
+            if (power === 'radar') {
+                this.processRadarResult();
+            }
+            
+            return true;
+        }
+        return false;
+    }
+    
+    processRadarResult() {
+        if (!this.board?.highlightedMines) return;
+        
+        this.board.highlightedMines.forEach(mine => {
+            const key = `${mine.x},${mine.y}`;
+            this.knownMines.add(key);
+            this.probabilityMap.set(key, 1.0);
+        });
+        
+        console.log(`[AI] Radar found ${this.board.highlightedMines.length} mines`);
+    }
 
-    analyzeOpponentBoard() {
-        // This would analyze the opponent's (player's) board for patterns
-        // Used to predict where the player might move next
-        if (!this.game?.playerBoard) return null;
+    // ==================== DECISION MAKING ====================
+    
+    makeDecision() {
+        // Priority 1: Flag confirmed mines
+        const mineToFlag = this.findMineToFlag();
+        if (mineToFlag) {
+            return { type: 'flag', ...mineToFlag };
+        }
         
-        const playerBoard = this.game.playerBoard;
-        const analysis = {
-            completionRate: 0,
-            safeAreasIdentified: [],
-            riskyAreas: []
-        };
+        // Priority 2: Reveal confirmed safe cells
+        const safeCell = this.findSafeCell();
+        if (safeCell) {
+            return { type: 'reveal', ...safeCell };
+        }
         
-        // Calculate player's progress
-        let revealed = 0;
-        let total = 0;
+        // Priority 3: Best probabilistic move
+        const probMove = this.findBestProbabilisticMove();
+        if (probMove) {
+            return { type: 'reveal', ...probMove };
+        }
+        
+        // Priority 4: Fallback
+        const fallback = this.findFallbackMove();
+        if (fallback) {
+            return { type: 'reveal', ...fallback };
+        }
+        
+        return null;
+    }
+    
+    findMineToFlag() {
+        for (const key of this.knownMines) {
+            if (!this.flaggedCells.has(key)) {
+                const [x, y] = key.split(',').map(Number);
+                const cell = this.board?.grid?.[y]?.[x];
+                if (cell && !cell.isFlagged && !cell.isRevealed) {
+                    return { x, y };
+                }
+            }
+        }
+        return null;
+    }
+    
+    findSafeCell() {
+        for (const key of this.knownSafe) {
+            const [x, y] = key.split(',').map(Number);
+            const cell = this.board?.grid?.[y]?.[x];
+            if (cell && !cell.isRevealed && !cell.isFlagged) {
+                return { x, y, confidence: 1.0 };
+            }
+        }
+        return null;
+    }
+    
+    findBestProbabilisticMove() {
+        const candidates = [];
+        
+        for (const [key, prob] of this.probabilityMap) {
+            if (prob < this.strategy.riskTolerance && !this.knownMines.has(key)) {
+                const [x, y] = key.split(',').map(Number);
+                const cell = this.board?.grid?.[y]?.[x];
+                if (cell && !cell.isRevealed && !cell.isFlagged) {
+                    candidates.push({ x, y, probability: prob });
+                }
+            }
+        }
+        
+        if (candidates.length === 0) return null;
+        
+        candidates.sort((a, b) => a.probability - b.probability);
+        
+        // Apply mistakes for easier difficulties
+        if (Math.random() < this.settings.mistakeRate) {
+            const idx = Math.floor(Math.random() * Math.min(5, candidates.length));
+            return candidates[idx];
+        }
+        
+        // Pick from top 3 with weighted randomness
+        const top = candidates.slice(0, 3);
+        const weights = [0.6, 0.25, 0.15];
+        const rand = Math.random();
+        let cum = 0;
+        
+        for (let i = 0; i < top.length; i++) {
+            cum += weights[i];
+            if (rand < cum) return top[i];
+        }
+        
+        return top[0];
+    }
+    
+    findFallbackMove() {
+        const candidates = [];
         
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
-                if (playerBoard.grid && playerBoard.grid[y] && playerBoard.grid[y][x]) {
-                    const cell = playerBoard.grid[y][x];
-                    if (!cell.isMine) {
-                        total++;
-                        if (cell.isRevealed) revealed++;
-                    }
+                const cell = this.board?.grid?.[y]?.[x];
+                const key = `${x},${y}`;
+                if (cell && !cell.isRevealed && !cell.isFlagged && !this.knownMines.has(key)) {
+                    const isEdge = x === 0 || x === this.gridSize-1 || y === 0 || y === this.gridSize-1;
+                    candidates.push({ x, y, score: isEdge ? 2 : 1 });
                 }
             }
         }
         
-        analysis.completionRate = total > 0 ? revealed / total : 0;
+        if (candidates.length === 0) return null;
         
-        return analysis;
+        candidates.sort((a, b) => b.score - a.score);
+        const idx = Math.floor(Math.random() * Math.min(5, candidates.length));
+        return candidates[idx];
+    }
+    
+    // ==================== DECISION EXECUTION ====================
+    
+    executeDecision(decision) {
+        if (decision.type === 'flag') {
+            this.game?.makeBotFlag?.(decision.x, decision.y);
+            this.flaggedCells.add(`${decision.x},${decision.y}`);
+            this.stuckCounter = 0;
+        } else if (decision.type === 'reveal') {
+            const result = this.game?.makeBotMove?.(decision.x, decision.y);
+            this.gameStats.movesMade++;
+            
+            if (result) {
+                if (result.hitMine) {
+                    this.gameStats.minesHit++;
+                    this.stuckCounter++;
+                } else {
+                    this.stuckCounter = 0;
+                }
+                
+                this.moveHistory.push({
+                    x: decision.x,
+                    y: decision.y,
+                    result: result.hitMine ? 'mine' : 'safe',
+                    time: Date.now()
+                });
+            }
+        }
+    }
+    
+    // ==================== RECOVERY SYSTEM ====================
+    
+    tryRecovery() {
+        console.log('[AI] Recovery attempt');
+        
+        const wrongFlag = this.findSuspiciousFlag();
+        if (wrongFlag) {
+            this.removeFlag(wrongFlag.x, wrongFlag.y);
+            this.stuckCounter = 0;
+            return;
+        }
+        
+        const random = this.findFallbackMove();
+        if (random) {
+            this.game?.makeBotMove?.(random.x, random.y);
+            this.stuckCounter = 0;
+        }
+    }
+    
+    findSuspiciousFlag() {
+        for (const key of this.flaggedCells) {
+            const [x, y] = key.split(',').map(Number);
+            const cell = this.board?.grid?.[y]?.[x];
+            if (!cell?.isFlagged) continue;
+            
+            const neighbors = this.getNeighbors(x, y);
+            for (const n of neighbors) {
+                const nc = this.board.grid[n.y][n.x];
+                if (!nc.isRevealed || nc.isMine) continue;
+                
+                const nNeighbors = this.getNeighbors(n.x, n.y);
+                const flagCount = nNeighbors.filter(nn => 
+                    this.board.grid[nn.y][nn.x].isFlagged
+                ).length;
+                
+                if (flagCount > nc.neighborCount) {
+                    return { x, y };
+                }
+            }
+        }
+        return null;
+    }
+    
+    removeFlag(x, y) {
+        const key = `${x},${y}`;
+        this.flaggedCells.delete(key);
+        this.knownMines.delete(key);
+        
+        if (this.game?.makeBotUnflag) {
+            this.game.makeBotUnflag(x, y);
+        }
+    }
+
+    // ==================== FREEZE HANDLING ====================
+    
+    freeze(duration) {
+        this.isFrozen = true;
+        this.frozenUntil = Date.now() + duration;
+    }
+
+    // ==================== GAME END LEARNING ====================
+    
+    endGameLearning(won, finalScore, opponentScore) {
+        this.learning.totalGames++;
+        if (won) this.learning.wins++;
+        else this.learning.losses++;
+        
+        const prevTotal = this.learning.avgScore * (this.learning.totalGames - 1);
+        this.learning.avgScore = (prevTotal + finalScore) / this.learning.totalGames;
+        
+        this.saveLearning();
+        
+        console.log(`[AI] Game: ${won ? 'WON' : 'LOST'} | ${finalScore} vs ${opponentScore} | Record: ${this.learning.wins}/${this.learning.totalGames}`);
     }
 }
