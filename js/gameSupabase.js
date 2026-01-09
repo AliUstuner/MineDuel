@@ -383,6 +383,74 @@ class BoardRenderer {
         }, duration);
     }
 
+    // Highlight random unrevealed mines (for radar power)
+    highlightRandomMines(count = 3) {
+        const unrevealedMines = [];
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.grid[y][x];
+                if (cell.isMine && !cell.isRevealed && !cell.isFlagged) {
+                    unrevealedMines.push({ x, y });
+                }
+            }
+        }
+        
+        // Shuffle and take first 'count' mines
+        const shuffled = unrevealedMines.sort(() => Math.random() - 0.5);
+        const selected = shuffled.slice(0, Math.min(count, shuffled.length));
+        
+        this.highlightMines(selected, 3000);
+        return selected;
+    }
+
+    // Safe burst - reveal random safe cells
+    safeBurst(count = 3) {
+        console.log('[SAFEBURST] Called with count:', count);
+        console.log('[SAFEBURST] Grid size:', this.gridSize);
+        
+        const safeCells = [];
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.grid[y][x];
+                if (!cell.isMine && !cell.isRevealed && !cell.isFlagged) {
+                    safeCells.push({ x, y });
+                }
+            }
+        }
+        
+        console.log('[SAFEBURST] Found safe cells:', safeCells.length);
+        
+        if (safeCells.length === 0) {
+            console.log('[SAFEBURST] No safe cells available');
+            return { points: 0, cellsRevealed: 0, revealedCells: [] };
+        }
+        
+        // Shuffle and take first 'count' safe cells
+        const shuffled = safeCells.sort(() => Math.random() - 0.5);
+        const toReveal = shuffled.slice(0, Math.min(count, shuffled.length));
+        
+        console.log('[SAFEBURST] Cells to reveal:', toReveal);
+        
+        let totalPoints = 0;
+        const allRevealed = [];
+        
+        for (const pos of toReveal) {
+            const revealed = this.revealCell(pos.x, pos.y);
+            console.log('[SAFEBURST] Revealed at', pos.x, pos.y, ':', revealed.length, 'cells');
+            allRevealed.push(...revealed);
+            // Count points: 5 for each safe cell revealed
+            revealed.forEach(c => {
+                if (!c.isMine) {
+                    totalPoints += 5;
+                }
+            });
+        }
+        
+        console.log('[SAFEBURST] Total points:', totalPoints, 'cells revealed:', allRevealed.length);
+        this.render();
+        return { points: totalPoints, cellsRevealed: allRevealed.length, revealedCells: allRevealed };
+    }
+
     reset() {
         this.grid = this.createEmptyGrid();
         this.mines = [];
@@ -1511,6 +1579,9 @@ class GameClient {
         this.updateScore();
         this.updatePowerButtons();
         
+        // Update player completion for bot AI analysis
+        this.playerCompletion = this.calculatePlayerCompletion();
+        
         if (hitMine && !this.hasShield) {
             this.mineHitCount++;
             this.audio.playMine();
@@ -1597,6 +1668,9 @@ class GameClient {
         this.score = Math.max(0, this.score + points);
         this.updateScore();
         this.updatePowerButtons();
+        
+        // Update player completion for bot AI analysis
+        this.playerCompletion = this.calculatePlayerCompletion();
         
         if (hitMine && !this.hasShield) {
             this.mineHitCount++;
@@ -2347,11 +2421,30 @@ class GameClient {
         cell.isFlagged = true;
         this.botBoard.render();
         
-        // Play flag sound
-        this.audio.playFlag();
+        // Play flag sound (use cell click as fallback)
+        if (this.audio?.playCellClick) {
+            this.audio.playCellClick();
+        }
         
         // Check if bot completed board
         this.checkBotWinCondition();
+    }
+    
+    // Remove flag from bot's board (for bot AI to correct wrong flags)
+    makeBotUnflag(x, y) {
+        if (!this.isBotMode || !this.botBoard || this.gameEnded) return false;
+        
+        const cell = this.botBoard.grid[y][x];
+        
+        // Can only unflag flagged cells
+        if (!cell.isFlagged) return false;
+        
+        // Remove the flag
+        cell.isFlagged = false;
+        this.botBoard.render();
+        
+        console.log('[BOT] Unflagged cell at:', x, y);
+        return true;
     }
     
     // Check if bot wins - 3 or fewer mine hits AND board completed
@@ -2394,19 +2487,19 @@ class GameClient {
         
         if (!this.isBotMode) {
             console.log('[BOT POWER] Not in bot mode');
-            return;
+            return false;
         }
         
         // Bot can only use powers if they have score
         if (this.opponentScore < cost) {
             console.log('[BOT POWER] Not enough score:', this.opponentScore, '<', cost);
-            return;
+            return false;
         }
         
         // Check if bot has uses left
         if (!this.botPowerUsesLeft || this.botPowerUsesLeft[power] <= 0) {
             console.log('[BOT POWER] No uses left:', this.botPowerUsesLeft);
-            return;
+            return false;
         }
         
         console.log('[BOT POWER] Using power:', power);
@@ -2423,35 +2516,62 @@ class GameClient {
         this.updateScore();
         
         // Show notification
-        this.showNotification(`🤖 Bot ${power.toUpperCase()} kullandı!`, 'warning');
+        const powerNames = {
+            'freeze': '❄️ DONDURMA',
+            'shield': '🛡️ KALKAN',
+            'radar': '📡 RADAR',
+            'safeburst': '💥 GÜVENLİ PATLAMA'
+        };
+        this.showNotification(`🤖 Bot ${powerNames[power] || power.toUpperCase()} kullandı!`, 'warning');
         
         // Apply power effects
         if (power === 'freeze') {
-            // Bot freezes the player
+            // Bot freezes the player - 5 second freeze
+            this.isFrozen = true;
+            this.frozenUntil = Date.now() + 5000;
             this.handleFrozen(5000);
             this.showPowerNotificationSimple('freeze', 'Bot seni dondurdu!');
+            console.log('[BOT POWER] Freeze applied - player frozen until:', new Date(this.frozenUntil));
         } else if (power === 'shield') {
             // Bot gets shield
             this.opponentHasShield = true;
-            this.opponentShieldUntil = Date.now() + 10000;
+            this.opponentShieldUntil = Date.now() + 30000;
             this.showOpponentPowerEffect('shield');
+            console.log('[BOT POWER] Shield applied to bot');
             
             setTimeout(() => {
                 this.opponentHasShield = false;
-            }, 10000);
+            }, 30000);
         } else if (power === 'radar') {
-            // Bot uses radar on its own board (doesn't affect player)
-            this.botBoard?.highlightRandomMines?.(3);
+            // Bot uses radar on its own board - this helps bot avoid mines
+            if (this.botBoard && typeof this.botBoard.highlightRandomMines === 'function') {
+                const mines = this.botBoard.highlightRandomMines(3);
+                console.log('[BOT POWER] Radar revealed mines:', mines);
+            }
             this.showOpponentPowerEffect('radar');
         } else if (power === 'safeburst') {
             // Bot uses safeburst on its own board
-            const result = this.botBoard?.safeBurst?.();
-            if (result && result.points > 0) {
-                this.opponentScore += result.points;
-                this.updateScore();
+            console.log('[BOT POWER] SafeBurst - checking botBoard:', !!this.botBoard);
+            console.log('[BOT POWER] SafeBurst - safeBurst function exists:', typeof this.botBoard?.safeBurst);
+            
+            if (this.botBoard && typeof this.botBoard.safeBurst === 'function') {
+                const result = this.botBoard.safeBurst(3);
+                console.log('[BOT POWER] SafeBurst result:', result);
+                
+                if (result && result.points > 0) {
+                    this.opponentScore += result.points;
+                    this.updateScore();
+                    console.log('[BOT POWER] SafeBurst revealed cells:', result.cellsRevealed, 'points:', result.points);
+                } else {
+                    console.log('[BOT POWER] SafeBurst no points - result:', result);
+                }
+            } else {
+                console.log('[BOT POWER] SafeBurst - function not available!');
             }
             this.showOpponentPowerEffect('safeburst');
         }
+        
+        return true;
     }
 
     // ==================== GAME END ====================
@@ -2513,6 +2633,12 @@ class GameClient {
             isDraw = this.score === this.opponentScore;
         }
         
+        // Bot learning: record game result
+        if (this.isBotMode && this.bot && typeof this.bot.endGameLearning === 'function') {
+            // Bot wins if player loses (isWinner is from player perspective)
+            this.bot.endGameLearning(!isWinner && !isDraw);
+        }
+        
         if (isDraw) {
             this.resultIcon.textContent = '🤝';
             this.resultTitle.textContent = 'Berabere!';
@@ -2542,6 +2668,26 @@ class GameClient {
             SupabaseClient.unsubscribe(this.gameChannel);
             this.gameChannel = null;
         }
+    }
+
+    // Calculate player's board completion percentage
+    calculatePlayerCompletion() {
+        if (!this.playerBoard || !this.playerBoard.grid) return 0;
+        
+        let revealed = 0;
+        let totalSafe = 0;
+        
+        for (let y = 0; y < this.playerBoard.gridSize; y++) {
+            for (let x = 0; x < this.playerBoard.gridSize; x++) {
+                const cell = this.playerBoard.grid[y][x];
+                if (!cell.isMine) {
+                    totalSafe++;
+                    if (cell.isRevealed) revealed++;
+                }
+            }
+        }
+        
+        return totalSafe > 0 ? (revealed / totalSafe) * 100 : 0;
     }
 
     updateScore(broadcast = true) {
