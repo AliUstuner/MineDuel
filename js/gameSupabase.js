@@ -5,6 +5,7 @@
 
 import * as SupabaseClient from './supabaseClient.js';
 import { BotAI } from './BotAI.js';
+import { dataCollector } from './GameDataCollector.js';
 
 // ==================== CONFIGURATION ====================
 const CONFIG = {
@@ -1335,6 +1336,18 @@ class GameClient {
         this.hideModal();
         this.startGameTimer();
         
+        // ==================== VERİ TOPLAMA BAŞLAT ====================
+        dataCollector.startRecording({
+            gridSize: gridSize,
+            mineCount: mineCount,
+            difficulty: config.difficulty || 'medium',
+            matchDuration: this.matchDuration,
+            isVsBot: this.isBotMode,
+            botDifficulty: this.isBotMode ? this.selectedBotDifficulty : null,
+            playerName: this.myName,
+            opponentName: this.opponentName
+        });
+        
         // Subscribe to game channel for real-time sync
         if (!config.isOffline) {
             this.setupGameChannel();
@@ -1671,6 +1684,22 @@ class GameClient {
         
         // Update player completion for bot AI analysis
         this.playerCompletion = this.calculatePlayerCompletion();
+        
+        // ==================== VERİ KAYDET ====================
+        dataCollector.recordMove({
+            player: 'player1',
+            type: 'reveal',
+            x: cell.x,
+            y: cell.y,
+            result: hitMine ? 'mine' : (revealed.length > 1 ? 'cascade' : 'safe'),
+            cellValue: hitMine ? 'mine' : (this.playerBoard.grid[cell.y][cell.x].neighborCount || 0),
+            cellsRevealed: revealed.length,
+            scoreChange: points,
+            currentScore: this.score,
+            opponentScore: this.opponentScore,
+            includeSnapshot: true,
+            board: this.playerBoard
+        });
         
         if (hitMine && !this.hasShield) {
             this.mineHitCount++;
@@ -2393,6 +2422,21 @@ class GameClient {
         this.opponentScore = Math.max(0, this.opponentScore + points);
         this.updateScore();
         
+        // ==================== BOT HAMLESİ VERİ KAYDET ====================
+        dataCollector.recordMove({
+            player: 'player2',  // Bot
+            type: 'reveal',
+            x: x,
+            y: y,
+            result: hitMine ? 'mine' : (revealed.length > 1 ? 'cascade' : 'safe'),
+            cellValue: hitMine ? 'mine' : (this.botBoard.grid[y][x].neighborCount || 0),
+            cellsRevealed: revealed.length,
+            scoreChange: points,
+            currentScore: this.opponentScore,
+            opponentScore: this.score,
+            includeSnapshot: false  // Bot hamlelerinde snapshot almıyoruz (performans)
+        });
+        
         if (hitMine) {
             this.opponentMineHitCount++;
             this.audio.playMine();
@@ -2490,7 +2534,7 @@ class GameClient {
     }
     
     useBotPower(power, cost) {
-        console.log('[BOT POWER] useBotPower called:', { power, cost, isBotMode: this.isBotMode });
+        console.log('[BOT POWER] useBotPower called:', { power, cost, isBotMode: this.isBotMode, score: this.opponentScore });
         
         if (!this.isBotMode) {
             console.log('[BOT POWER] Not in bot mode');
@@ -2509,7 +2553,9 @@ class GameClient {
             return false;
         }
         
-        console.log('[BOT POWER] Using power:', power);
+        // ==================== VERİ KAYDET ====================
+        const scoreBefore = this.opponentScore;
+                console.log('[BOT POWER] Using power:', power);
         console.log('[BOT POWER] Before deduction - botPowerUsesLeft:', JSON.stringify(this.botPowerUsesLeft));
         
         // Deduct cost from bot's score
@@ -2604,6 +2650,16 @@ class GameClient {
             this.showOpponentPowerEffect('safeburst');
         }
         
+        // ==================== GÜÇ KULLANIMI VERİ KAYDET ====================
+        dataCollector.recordPowerUsage({
+            player: 'player2',  // Bot
+            powerType: power,
+            cost: cost,
+            scoreBefore: scoreBefore,
+            scoreAfter: this.opponentScore,
+            opponentScore: this.score
+        });
+        
         return true;
     }
 
@@ -2665,6 +2721,18 @@ class GameClient {
             isWinner = this.score > this.opponentScore;
             isDraw = this.score === this.opponentScore;
         }
+        
+        // ==================== VERİ KAYIT SONLANDIR ====================
+        const winReason = this.iCompletedBoard ? 'completion' : 
+                         this.opponentCompletedBoard ? 'opponent_completion' : 'score';
+        
+        dataCollector.endRecording({
+            winner: isDraw ? 'draw' : (isWinner ? 'player1' : 'player2'),
+            winReason: winReason,
+            player1Score: this.score,
+            player2Score: this.opponentScore,
+            minePositions: this.playerBoard?.mines?.map(m => ({ x: m.x, y: m.y })) || []
+        });
         
         // Bot learning: record game result
         if (this.isBotMode && this.bot && typeof this.bot.endGameLearning === 'function') {
