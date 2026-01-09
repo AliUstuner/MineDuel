@@ -2454,30 +2454,37 @@ class GameClient {
         // Check if bot's board is completed
         if (this.botBoard && this.botBoard.checkBoardCompleted()) {
             console.log('[BOT WIN] Bot completed board!');
+            console.log('[BOT WIN] Bot mine hits:', this.opponentMineHitCount);
+            console.log('[BOT WIN] Bot score:', this.opponentScore, 'Player score:', this.score);
             
-            // Bot can only win instantly if 3 or fewer mine hits AND higher score
+            // Stop bot immediately when board is completed
+            this.bot?.stop();
+            this.opponentCompletedBoard = true;
+            
+            // Bot completed the board - check if it wins
             if (this.opponentMineHitCount <= 3) {
-                // Check scores
+                // Bot had 3 or fewer mine hits - eligible for instant win if higher score
                 if (this.opponentScore > this.score) {
-                    console.log('[BOT WIN] Bot wins with higher score:', this.opponentScore, 'vs', this.score);
-                    this.bot?.stop();
-                    this.opponentCompletedBoard = true;
+                    console.log('[BOT WIN] Bot wins instantly with higher score!');
+                    this.showNotification('🤖 Bot tahtayı tamamladı ve kazandı!', 'error');
                     setTimeout(() => {
                         this.endGame(false); // Bot wins
-                    }, 500);
-                } else {
-                    console.log('[BOT WIN] Bot completed but player has higher score - waiting');
-                    this.bot?.stop();
-                    this.opponentCompletedBoard = true;
-                    this.showNotification('Bot tahtayı tamamladı! En yüksek skor kazanır.', 'info');
+                    }, 1000);
+                    return;
                 }
-            } else {
-                console.log('[BOT WIN] Bot completed board but hit', this.opponentMineHitCount, 'mines - waiting for timer');
-                // Bot completed board but hit >3 mines
-                // Stop playing and wait for timer
-                this.bot?.stop();
-                this.opponentCompletedBoard = true;
-                this.showNotification('Bot tahtayı tamamladı! En yüksek skor kazanır.', 'info');
+            }
+            
+            // Bot completed but doesn't win instantly
+            // Either >3 mine hits OR player has higher/equal score
+            // Game continues - player can still try to get higher score
+            this.showNotification('🤖 Bot tahtayı tamamladı! Süre bitene kadar en yüksek skoru hedefle!', 'warning');
+            
+            // If player also completed, end the game
+            if (this.playerBoard && this.playerBoard.checkBoardCompleted()) {
+                console.log('[BOTH COMPLETED] Both boards completed, ending game');
+                setTimeout(() => {
+                    this.endGame(this.score >= this.opponentScore);
+                }, 1000);
             }
         }
     }

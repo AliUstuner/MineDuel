@@ -30,6 +30,21 @@ export class BotAI {
         // Pattern recognition cache
         this.patternCache = new Map();
         
+        // RADAR DETECTED MINES - Mines found by radar power
+        this.radarDetectedMines = new Set(); // Stores "x,y" strings
+        
+        // SCORE AWARENESS - Bot knows score matters most
+        this.scoreStrategy = {
+            targetScore: 0,           // Updated based on player score
+            conservePowers: true,     // Start conservative with powers
+            powerValueAssessment: {   // How much each power is "worth" in score terms
+                radar: 50,            // Prevents mine hit (-30) + helps find safe cells
+                safeburst: 15,        // Direct points but costs 40
+                shield: 30,           // Defensive value
+                freeze: 80            // High value when player is ahead
+            }
+        };
+        
         // Strategic state tracking
         this.strategicState = {
             lastPowerUsed: 0,
@@ -462,6 +477,8 @@ export class BotAI {
     }
 
     // ==================== STRATEGIC POWER SYSTEM ====================
+    
+    // BOT CORE PRINCIPLE: "Winning = Highest Score. Powers cost score, so use wisely!"
 
     makeStrategicPowerDecision() {
         if (!this.game) return null;
@@ -469,7 +486,7 @@ export class BotAI {
         const gameState = this.captureGameState();
         const timeSinceLastPower = Date.now() - this.strategicState.lastPowerUsed;
         
-        // Don't spam powers
+        // Don't spam powers - wait at least 5 seconds
         if (timeSinceLastPower < this.strategicState.powerCooldown) {
             return null;
         }
@@ -478,69 +495,64 @@ export class BotAI {
         const botScore = gameState.botScore;
         const timeRemaining = gameState.timeRemaining;
         const timePercent = timeRemaining / (this.game?.matchDuration || 120000);
+        const scoreDiff = botScore - playerScore; // Positive = bot ahead
+        
+        // Update target score based on player
+        this.scoreStrategy.targetScore = playerScore + 50;
         
         // Calculate threat level
         this.strategicState.playerThreatLevel = this.calculatePlayerThreat(gameState);
         
-        // ============ FREEZE STRATEGY ============
-        // Use when:
-        // 1. Player is about to win (high score, high completion)
-        // 2. Time is running out and player is ahead
-        // 3. Player just had a big score spike
-        const freezeConditions = [
-            // Critical: Player about to win
-            playerScore > botScore + 60 && timePercent < 0.4,
-            // Player on a streak and significantly ahead
-            this.strategicState.playerThreatLevel > 0.8 && playerScore > botScore + 30,
-            // Time pressure: Player ahead near end
-            timePercent < 0.25 && playerScore > botScore + 20,
-            // Player completion too high
-            gameState.playerCompletion > 70 && playerScore > botScore
-        ];
+        // SCORE-AWARE POWER DECISION FRAMEWORK
+        // Rule 1: Never use power if it leaves bot unable to compete
+        // Rule 2: Only use power if expected value > cost
+        // Rule 3: Prioritize by situation urgency
         
-        if (freezeConditions.some(c => c) && this.canUsePower('freeze')) {
-            if (this.usePower('freeze')) {
-                this.strategicState.lastPowerUsed = Date.now();
-                this.recordPowerUsage('freeze', true, gameState);
-                return 'freeze';
+        const costs = { radar: 30, safeburst: 40, shield: 50, freeze: 60 };
+        
+        // ============ FREEZE STRATEGY ============
+        // HIGH VALUE when: Player is ahead and on a streak
+        // Cost: 60, Value: Stops player from scoring for 5 seconds
+        const freezeValue = this.calculateFreezeValue(gameState);
+        const shouldFreeze = freezeValue > costs.freeze && this.canUsePower('freeze');
+        
+        if (shouldFreeze) {
+            // Only freeze if bot has enough score buffer
+            if (botScore >= costs.freeze + 30) { // Keep at least 30 after using
+                if (this.usePower('freeze')) {
+                    console.log(`[BotAI STRATEGY] FREEZE used. Value: ${freezeValue}, Cost: ${costs.freeze}`);
+                    this.strategicState.lastPowerUsed = Date.now();
+                    this.recordPowerUsage('freeze', true, gameState);
+                    return 'freeze';
+                }
             }
         }
         
         // ============ SHIELD STRATEGY ============
-        // Use when:
-        // 1. Bot is ahead and wants to protect lead
-        // 2. About to make risky move (no safe cells)
-        // 3. Near end of game with lead
-        const shieldConditions = [
-            // Protecting lead near end
-            botScore > playerScore + 20 && timePercent < 0.35 && !this.game?.opponentHasShield,
-            // No safe moves, about to take risk
-            this.findGuaranteedSafeCells().length === 0 && botScore > 40 && !this.game?.opponentHasShield,
-            // Multiple consecutive mine hits
-            this.strategicState.consecutiveMineHits >= 2 && !this.game?.opponentHasShield
-        ];
+        // HIGH VALUE when: Bot is ahead and near end, or taking risky moves
+        const shieldValue = this.calculateShieldValue(gameState);
+        const shouldShield = shieldValue > costs.shield && this.canUsePower('shield');
         
-        if (shieldConditions.some(c => c) && this.canUsePower('shield')) {
-            if (this.usePower('shield')) {
-                this.strategicState.lastPowerUsed = Date.now();
-                this.recordPowerUsage('shield', true, gameState);
-                return 'shield';
+        if (shouldShield && !this.game?.opponentHasShield) {
+            if (botScore >= costs.shield + 20) {
+                if (this.usePower('shield')) {
+                    console.log(`[BotAI STRATEGY] SHIELD used. Value: ${shieldValue}, Cost: ${costs.shield}`);
+                    this.strategicState.lastPowerUsed = Date.now();
+                    this.recordPowerUsage('shield', true, gameState);
+                    return 'shield';
+                }
             }
         }
         
         // ============ RADAR STRATEGY ============
-        // Use when stuck or to avoid mines
-        const radarConditions = [
-            // Stuck with no safe moves
-            this.findGuaranteedSafeCells().length === 0 && this.strategicState.consecutiveMineHits >= 1,
-            // Early game reconnaissance
-            timePercent > 0.8 && botScore >= 35 && this.moveHistory.length < 5,
-            // High uncertainty, many unrevealed cells
-            this.calculateBoardUncertainty() > 0.7 && botScore >= 40
-        ];
+        // HIGH VALUE when: Many unrevealed cells, or stuck with no safe moves
+        // This prevents mine hits (-30 each) so value can be high
+        const radarValue = this.calculateRadarValue(gameState);
+        const shouldRadar = radarValue > costs.radar && this.canUsePower('radar');
         
-        if (radarConditions.some(c => c) && this.canUsePower('radar')) {
+        if (shouldRadar) {
             if (this.usePower('radar')) {
+                console.log(`[BotAI STRATEGY] RADAR used. Value: ${radarValue}, Cost: ${costs.radar}`);
                 this.strategicState.lastPowerUsed = Date.now();
                 this.recordPowerUsage('radar', true, gameState);
                 return 'radar';
@@ -548,25 +560,139 @@ export class BotAI {
         }
         
         // ============ SAFEBURST STRATEGY ============
-        // Use for quick points when behind or to catch up
-        const safeburstConditions = [
-            // Behind and need quick points
-            playerScore > botScore + 40 && botScore >= 50,
-            // Early game acceleration
-            timePercent > 0.7 && botScore >= 55 && this.strategicState.consecutiveSafeMoves >= 3,
-            // Mid game boost when neck and neck
-            timePercent > 0.4 && timePercent < 0.7 && Math.abs(playerScore - botScore) < 20 && botScore >= 45
-        ];
+        // MODERATE VALUE: Gives ~15 points for 40 cost = net -25
+        // Only use when: REALLY behind and need quick recovery
+        const safeburstValue = this.calculateSafeburstValue(gameState);
+        const shouldSafeburst = safeburstValue > costs.safeburst && this.canUsePower('safeburst');
         
-        if (safeburstConditions.some(c => c) && this.canUsePower('safeburst')) {
-            if (this.usePower('safeburst')) {
-                this.strategicState.lastPowerUsed = Date.now();
-                this.recordPowerUsage('safeburst', true, gameState);
-                return 'safeburst';
+        if (shouldSafeburst) {
+            // Only if significantly behind
+            if (scoreDiff < -50 && botScore >= costs.safeburst) {
+                if (this.usePower('safeburst')) {
+                    console.log(`[BotAI STRATEGY] SAFEBURST used. Value: ${safeburstValue}, Cost: ${costs.safeburst}`);
+                    this.strategicState.lastPowerUsed = Date.now();
+                    this.recordPowerUsage('safeburst', true, gameState);
+                    return 'safeburst';
+                }
             }
         }
         
         return null;
+    }
+    
+    // Calculate the strategic value of using FREEZE
+    calculateFreezeValue(gameState) {
+        const playerScore = gameState.playerScore;
+        const botScore = gameState.botScore;
+        const scoreDiff = playerScore - botScore;
+        const timePercent = gameState.timeRemaining / (this.game?.matchDuration || 120000);
+        
+        let value = 0;
+        
+        // Base value: How much player could score in 5 seconds
+        const playerScoreRate = playerScore / Math.max(1, 120000 - gameState.timeRemaining) * 1000; // per second
+        value += playerScoreRate * 5; // 5 second freeze
+        
+        // Bonus if player is ahead
+        if (scoreDiff > 0) {
+            value += scoreDiff * 0.5;
+        }
+        
+        // Bonus in late game
+        if (timePercent < 0.3) {
+            value *= 1.5;
+        }
+        
+        // Bonus if player has high completion
+        if ((gameState.playerCompletion || 0) > 60) {
+            value += 30;
+        }
+        
+        return Math.round(value);
+    }
+    
+    // Calculate the strategic value of using SHIELD
+    calculateShieldValue(gameState) {
+        const botScore = gameState.botScore;
+        const scoreDiff = botScore - gameState.playerScore;
+        const timePercent = gameState.timeRemaining / (this.game?.matchDuration || 120000);
+        
+        let value = 0;
+        
+        // Value increases when bot is ahead (protecting lead)
+        if (scoreDiff > 0) {
+            value += scoreDiff * 0.3;
+        }
+        
+        // High value when about to make risky move
+        if (this.findGuaranteedSafeCells().length === 0) {
+            value += 40; // Protects against potential mine hit
+        }
+        
+        // Value increases near end of game
+        if (timePercent < 0.25 && scoreDiff > 0) {
+            value += 50;
+        }
+        
+        // Value if consecutive mine hits
+        if (this.strategicState.consecutiveMineHits >= 2) {
+            value += 30;
+        }
+        
+        return Math.round(value);
+    }
+    
+    // Calculate the strategic value of using RADAR
+    calculateRadarValue(gameState) {
+        let value = 0;
+        
+        // Base value: Prevents mine hits
+        // Each mine hit = -30 points, radar shows 3 mines
+        // Theoretical max value = 3 * 30 = 90, but realistically less
+        
+        // No safe cells = HIGH value
+        if (this.findGuaranteedSafeCells().length === 0) {
+            value += 60; // Very valuable when stuck
+        }
+        
+        // Consecutive mine hits = need radar
+        if (this.strategicState.consecutiveMineHits >= 1) {
+            value += 40;
+        }
+        
+        // Board uncertainty
+        const uncertainty = this.calculateBoardUncertainty();
+        value += uncertainty * 30;
+        
+        // Early game radar for reconnaissance
+        if (this.moveHistory.length < 5 && gameState.botScore >= 40) {
+            value += 20;
+        }
+        
+        return Math.round(value);
+    }
+    
+    // Calculate the strategic value of using SAFEBURST
+    calculateSafeburstValue(gameState) {
+        const scoreDiff = gameState.playerScore - gameState.botScore;
+        const timePercent = gameState.timeRemaining / (this.game?.matchDuration || 120000);
+        
+        let value = 0;
+        
+        // Base value: ~15 points from 3 safe cells
+        value = 15;
+        
+        // Bonus when behind
+        if (scoreDiff > 0) {
+            value += Math.min(scoreDiff * 0.3, 30);
+        }
+        
+        // Time pressure bonus
+        if (timePercent < 0.3 && scoreDiff > 30) {
+            value += 20;
+        }
+        
+        return Math.round(value);
     }
 
     calculatePlayerThreat(gameState) {
@@ -739,7 +865,7 @@ export class BotAI {
         const mines = [];
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
-                if (this.board.grid[y][x].isMine && !this.board.grid[y][x].isRevealed) {
+                if (this.board.grid[y][x].isMine && !this.board.grid[y][x].isRevealed && !this.board.grid[y][x].isFlagged) {
                     mines.push({ x, y });
                 }
             }
@@ -747,10 +873,40 @@ export class BotAI {
         
         // Mark 3 random mines as known
         const knownMines = mines.sort(() => Math.random() - 0.5).slice(0, 3);
+        console.log('[BotAI] Radar detected mines:', knownMines);
+        
         knownMines.forEach(pos => {
             const key = `${pos.x},${pos.y}`;
+            // Add to pattern cache
             this.patternCache.set(key, 'KNOWN_MINE');
+            // Add to radar detected mines set
+            this.radarDetectedMines.add(key);
+            console.log('[BotAI] Radar: Mine at', pos.x, pos.y, 'saved to memory');
         });
+        
+        // Immediately flag the detected mines
+        this.flagRadarDetectedMines();
+    }
+    
+    // Flag mines that were detected by radar
+    flagRadarDetectedMines() {
+        if (!this.game?.makeBotFlag) return;
+        
+        for (const key of this.radarDetectedMines) {
+            const [x, y] = key.split(',').map(Number);
+            const cell = this.board?.grid?.[y]?.[x];
+            
+            // Only flag if not already flagged or revealed
+            if (cell && !cell.isFlagged && !cell.isRevealed) {
+                console.log('[BotAI] Flagging radar-detected mine at', x, y);
+                this.game.makeBotFlag(x, y);
+            }
+        }
+    }
+    
+    // Check if a cell is a known mine from radar
+    isRadarDetectedMine(x, y) {
+        return this.radarDetectedMines.has(`${x},${y}`);
     }
 
     applySafeBurst() {
@@ -783,6 +939,9 @@ export class BotAI {
     // ==================== MOVE FINDING ALGORITHMS ====================
 
     findOptimalMove() {
+        // 0. First, flag any radar-detected mines we haven't flagged yet
+        this.flagRadarDetectedMines();
+        
         // 1. Find guaranteed safe cells
         const safeCells = this.findGuaranteedSafeCells();
         
@@ -795,10 +954,17 @@ export class BotAI {
         const probabilityMap = this.calculateMineProbabilities();
         
         // 3. Get all unrevealed cells sorted by safety
+        // IMPORTANT: Filter out radar-detected mines and known mines
         const candidates = this.getAllUnrevealedCells()
             .filter(cell => {
                 const key = `${cell.x},${cell.y}`;
-                return this.patternCache.get(key) !== 'KNOWN_MINE';
+                // Skip known mines from pattern cache
+                if (this.patternCache.get(key) === 'KNOWN_MINE') return false;
+                // Skip radar-detected mines
+                if (this.radarDetectedMines.has(key)) return false;
+                // Skip flagged cells
+                if (this.board?.grid?.[cell.y]?.[cell.x]?.isFlagged) return false;
+                return true;
             })
             .map(cell => ({
                 ...cell,
