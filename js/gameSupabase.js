@@ -2544,6 +2544,15 @@ class GameClient {
             }, 30000);
         } else if (power === 'radar') {
             // Bot uses radar on its own board - this helps bot avoid mines
+            // Make sure mines are generated first
+            if (this.botBoard && (!this.botBoard.mines || this.botBoard.mines.length === 0)) {
+                const mineCount = this.pendingMineCount || 20;
+                console.log('[BOT POWER] Radar - generating mines first:', mineCount);
+                const randX = Math.floor(Math.random() * this.botBoard.gridSize);
+                const randY = Math.floor(Math.random() * this.botBoard.gridSize);
+                this.botBoard.generateMines(mineCount, randX, randY);
+            }
+            
             if (this.botBoard && typeof this.botBoard.highlightRandomMines === 'function') {
                 const mines = this.botBoard.highlightRandomMines(3);
                 console.log('[BOT POWER] Radar revealed mines:', mines);
@@ -2552,9 +2561,20 @@ class GameClient {
         } else if (power === 'safeburst') {
             // Bot uses safeburst on its own board
             console.log('[BOT POWER] SafeBurst - checking botBoard:', !!this.botBoard);
-            console.log('[BOT POWER] SafeBurst - safeBurst function exists:', typeof this.botBoard?.safeBurst);
+            console.log('[BOT POWER] SafeBurst - mines generated:', this.botBoard?.mines?.length || 0);
+            
+            // Make sure mines are generated first
+            if (this.botBoard && (!this.botBoard.mines || this.botBoard.mines.length === 0)) {
+                const mineCount = this.pendingMineCount || 20;
+                console.log('[BOT POWER] SafeBurst - generating mines first:', mineCount);
+                // Generate mines at a random safe position
+                const randX = Math.floor(Math.random() * this.botBoard.gridSize);
+                const randY = Math.floor(Math.random() * this.botBoard.gridSize);
+                this.botBoard.generateMines(mineCount, randX, randY);
+            }
             
             if (this.botBoard && typeof this.botBoard.safeBurst === 'function') {
+                console.log('[BOT POWER] SafeBurst - calling safeBurst(3)');
                 const result = this.botBoard.safeBurst(3);
                 console.log('[BOT POWER] SafeBurst result:', result);
                 
@@ -2565,6 +2585,9 @@ class GameClient {
                 } else {
                     console.log('[BOT POWER] SafeBurst no points - result:', result);
                 }
+                
+                // Force re-render the bot board
+                this.botBoard.render();
             } else {
                 console.log('[BOT POWER] SafeBurst - function not available!');
             }
