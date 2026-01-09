@@ -1,14 +1,8 @@
 /**
- * BotAI.js - ADVANCED INTELLIGENT MINESWEEPER AI
+ * BotAI.js - GERÇEK YAPAY ZEKA SİSTEMİ
  * 
- * A serious, strategic AI that:
- * - Uses Constraint Satisfaction Problem (CSP) solving for mine detection
- * - Continuously analyzes both boards (self and opponent)
- * - Makes decisions based on game theory and probability
- * - Adapts strategy based on game state
- * - Learns from each game played
- * 
- * Core Philosophy: "Every decision must maximize winning probability"
+ * Bu AI kendi kararlarını verir. Her durumu analiz eder ve
+ * en mantıklı hamleyi seçer. Sabit kurallar yok - dinamik düşünce var.
  */
 
 export class BotAI {
@@ -22,179 +16,99 @@ export class BotAI {
         this.moveInterval = null;
         this.isFrozen = false;
         this.frozenUntil = 0;
-        this.stuckCounter = 0;
         
-        // ==================== INTELLIGENT ANALYSIS SYSTEM ====================
-        
-        // Real-time board state analysis
-        this.boardAnalysis = {
-            // My board state
-            myBoard: {
-                revealedCells: 0,
-                flaggedCells: 0,
-                safeCellsRemaining: 0,
-                minesRemaining: 0,
-                completionPercent: 0,
-                dangerZones: [],
-                safeZones: [],
-                uncertainZones: []
+        // ==================== BEYİN ====================
+        this.brain = {
+            // Anlık durum algısı
+            perception: {
+                myScore: 0,
+                playerScore: 0,
+                scoreDiff: 0,
+                timeLeft: 100,
+                myProgress: 0,
+                playerProgress: 0,
+                threat: 0,          // 0-100 tehdit seviyesi
+                opportunity: 0,     // 0-100 fırsat seviyesi
+                urgency: 0          // 0-100 aciliyet
             },
-            // Opponent (player) board state
-            opponentBoard: {
-                revealedCells: 0,
-                estimatedCompletion: 0,
-                scoreRate: 0,
-                lastScoreCheck: 0,
-                lastScore: 0,
-                isOnStreak: false,
-                streakLength: 0
+            
+            // Hafıza
+            memory: {
+                lastPlayerScore: 0,
+                playerScoreHistory: [],
+                myMoveHistory: [],
+                powerHistory: [],
+                mistakeCount: 0,
+                successStreak: 0
+            },
+            
+            // Duygusal durum (karar etkiler)
+            mood: 'calm', // calm, aggressive, defensive, desperate, confident
+            
+            // Güç durumu
+            powers: {
+                used: { freeze: 0, shield: 0, radar: 0, safeburst: 0 },
+                lastUseTime: 0
             }
         };
         
-        // Probability map for each cell
-        this.probabilityMap = new Map();
+        // Zorluk ayarları
+        this.config = this.getConfig(difficulty);
         
-        // Known information
-        this.knownMines = new Set();
-        this.knownSafe = new Set();
-        this.flaggedCells = new Set();
-        
-        // ==================== STRATEGIC STATE ====================
-        
-        this.strategy = {
-            mode: 'balanced',
-            lastModeChange: 0,
-            powerBudget: 0,
-            targetScore: 0,
-            riskTolerance: 0.3,
-            
-            powersUsed: { freeze: 0, shield: 0, radar: 0, safeburst: 0 },
-            powerLimits: this.getPowerLimits(difficulty),
-            lastPowerTime: 0,
-            powerCooldown: this.getPowerCooldown(difficulty)
+        // Bilinen hücreler
+        this.knowledge = {
+            safeCells: new Set(),
+            mineCells: new Set(),
+            flaggedCells: new Set(),
+            probabilityMap: new Map()
         };
         
-        // ==================== LEARNING SYSTEM ====================
-        
-        this.learning = this.loadLearning();
-        
-        // Current game tracking
-        this.gameStats = {
-            movesMade: 0,
-            minesHit: 0,
-            correctFlags: 0,
-            wrongFlags: 0,
-            decisionsAnalyzed: 0
-        };
-        
-        // Move history
-        this.moveHistory = [];
-        
-        // ==================== DIFFICULTY SETTINGS ====================
-        
-        this.settings = this.getSettings();
-        
-        console.log(`[AI] Initialized ${difficulty.toUpperCase()} AI - Games played: ${this.learning.totalGames}`);
+        console.log(`[AI] ${difficulty.toUpperCase()} Brain initialized`);
     }
-
-    // ==================== SETTINGS BY DIFFICULTY ====================
     
-    getSettings() {
+    getConfig(difficulty) {
         const configs = {
             easy: {
-                thinkTime: { min: 1500, max: 2500 },
-                mistakeRate: 0.25,
-                analysisDepth: 1,
-                useCSP: false,
-                useProbability: false
+                thinkSpeed: { min: 1200, max: 2000 },
+                intelligence: 0.6,      // Ne kadar akıllı (0-1)
+                powerAwareness: 0.3,    // Güç kullanma eğilimi
+                maxPowers: { freeze: 0, shield: 0, radar: 1, safeburst: 0 },
+                minPowerCooldown: 25000
             },
             medium: {
-                thinkTime: { min: 800, max: 1500 },
-                mistakeRate: 0.12,
-                analysisDepth: 2,
-                useCSP: true,
-                useProbability: true
+                thinkSpeed: { min: 700, max: 1300 },
+                intelligence: 0.8,
+                powerAwareness: 0.6,
+                maxPowers: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
+                minPowerCooldown: 15000
             },
             hard: {
-                thinkTime: { min: 400, max: 900 },
-                mistakeRate: 0.05,
-                analysisDepth: 3,
-                useCSP: true,
-                useProbability: true
+                thinkSpeed: { min: 400, max: 800 },
+                intelligence: 0.92,
+                powerAwareness: 0.8,
+                maxPowers: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
+                minPowerCooldown: 10000
             },
             expert: {
-                thinkTime: { min: 200, max: 500 },
-                mistakeRate: 0.01,
-                analysisDepth: 4,
-                useCSP: true,
-                useProbability: true
+                thinkSpeed: { min: 200, max: 500 },
+                intelligence: 0.98,
+                powerAwareness: 0.95,
+                maxPowers: { freeze: 2, shield: 1, radar: 3, safeburst: 2 },
+                minPowerCooldown: 6000
             }
         };
-        
-        return configs[this.difficulty] || configs.medium;
-    }
-    
-    // Power limits by difficulty
-    getPowerLimits(difficulty) {
-        const limits = {
-            easy: { freeze: 0, shield: 0, radar: 1, safeburst: 0 },
-            medium: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
-            hard: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
-            expert: { freeze: 2, shield: 1, radar: 3, safeburst: 2 }
-        };
-        return limits[difficulty] || limits.medium;
-    }
-    
-    // Cooldown by difficulty (ms)
-    getPowerCooldown(difficulty) {
-        const cooldowns = {
-            easy: 30000,    // 30 saniye - çok nadir
-            medium: 18000,  // 18 saniye
-            hard: 12000,    // 12 saniye
-            expert: 8000    // 8 saniye - çok agresif
-        };
-        return cooldowns[difficulty] || 18000;
+        return configs[difficulty] || configs.medium;
     }
 
-    // ==================== LEARNING PERSISTENCE ====================
-    
-    loadLearning() {
-        try {
-            const data = localStorage.getItem('mineduel_ai_v3');
-            if (data) return JSON.parse(data);
-        } catch (e) {}
-        
-        return {
-            totalGames: 0,
-            wins: 0,
-            losses: 0,
-            avgScore: 0,
-            powerEffectiveness: {
-                freeze: { uses: 0, success: 0 },
-                shield: { uses: 0, success: 0 },
-                radar: { uses: 0, success: 0 },
-                safeburst: { uses: 0, success: 0 }
-            }
-        };
-    }
-    
-    saveLearning() {
-        try {
-            localStorage.setItem('mineduel_ai_v3', JSON.stringify(this.learning));
-        } catch (e) {}
-    }
-
-    // ==================== GAME LIFECYCLE ====================
+    // ==================== YAŞAM DÖNGÜSÜ ====================
     
     start(board, gridSize) {
         this.board = board;
         this.gridSize = gridSize;
         this.isActive = true;
-        this.isThinking = false;
-        this.resetGameState();
-        
+        this.reset();
         console.log(`[AI] Starting on ${gridSize}x${gridSize} board`);
-        this.scheduleNextMove();
+        this.scheduleThink();
     }
     
     stop() {
@@ -203,50 +117,48 @@ export class BotAI {
             clearTimeout(this.moveInterval);
             this.moveInterval = null;
         }
-        console.log('[AI] Stopped');
     }
     
-    resetGameState() {
-        this.probabilityMap.clear();
-        this.knownMines.clear();
-        this.knownSafe.clear();
-        this.flaggedCells.clear();
-        this.moveHistory = [];
-        this.stuckCounter = 0;
-        
-        this.strategy.powersUsed = { freeze: 0, shield: 0, radar: 0, safeburst: 0 };
-        this.strategy.lastPowerTime = 0;
-        this.strategy.mode = 'balanced';
-        
-        this.gameStats = {
-            movesMade: 0,
-            minesHit: 0,
-            correctFlags: 0,
-            wrongFlags: 0,
-            decisionsAnalyzed: 0
+    reset() {
+        this.knowledge.safeCells.clear();
+        this.knowledge.mineCells.clear();
+        this.knowledge.flaggedCells.clear();
+        this.knowledge.probabilityMap.clear();
+        this.brain.powers.used = { freeze: 0, shield: 0, radar: 0, safeburst: 0 };
+        this.brain.powers.lastUseTime = 0;
+        this.brain.memory = {
+            lastPlayerScore: 0,
+            playerScoreHistory: [],
+            myMoveHistory: [],
+            powerHistory: [],
+            mistakeCount: 0,
+            successStreak: 0
         };
-        
-        this.boardAnalysis.opponentBoard.lastScoreCheck = Date.now();
-        this.boardAnalysis.opponentBoard.lastScore = 0;
+        this.brain.mood = 'calm';
     }
     
-    // ==================== MAIN THINKING LOOP ====================
+    freeze(duration) {
+        this.isFrozen = true;
+        this.frozenUntil = Date.now() + duration;
+    }
     
-    scheduleNextMove() {
+    scheduleThink() {
         if (!this.isActive || this.game?.gameEnded) return;
         
-        const { min, max } = this.settings.thinkTime;
+        const { min, max } = this.config.thinkSpeed;
         const delay = min + Math.random() * (max - min);
         
         this.moveInterval = setTimeout(() => this.think(), delay);
     }
+
+    // ==================== ANA DÜŞÜNCE DÖNGÜSÜ ====================
     
     async think() {
         if (!this.isActive || this.isThinking || this.game?.gameEnded) return;
         
-        // Check if frozen
+        // Dondurulmuş mu?
         if (this.isFrozen && Date.now() < this.frozenUntil) {
-            this.scheduleNextMove();
+            this.scheduleThink();
             return;
         }
         this.isFrozen = false;
@@ -255,211 +167,241 @@ export class BotAI {
         this.game?.showBotThinking?.();
         
         try {
-            await this.delay(100);
+            // 1. ALGI - Dünyayı anla
+            this.perceive();
             
-            // STEP 1: ANALYZE GAME STATE
-            this.analyzeGameState();
+            // 2. DUYGU - Ruh halini belirle
+            this.updateMood();
             
-            // STEP 2: UPDATE STRATEGY
-            this.updateStrategy();
+            // 3. ANALİZ - Tahtayı analiz et
+            this.analyzeBoard();
             
-            // STEP 3: CONSIDER POWER USAGE
-            if (this.shouldUsePower()) {
-                const powerUsed = this.selectAndUsePower();
-                if (powerUsed) {
-                    this.finishThinking();
-                    return;
-                }
-            }
+            // 4. KARAR - Ne yapacağına karar ver
+            const decision = this.decide();
             
-            // STEP 4: MAKE BEST MOVE
-            const decision = this.makeDecision();
-            
+            // 5. EYLEM - Kararı uygula
             if (decision) {
-                this.executeDecision(decision);
-            } else {
-                this.stuckCounter++;
-                if (this.stuckCounter >= 3) {
-                    this.tryRecovery();
-                }
+                this.execute(decision);
             }
             
         } catch (error) {
-            console.error('[AI] Error:', error);
+            console.error('[AI] Think error:', error);
         }
         
-        this.finishThinking();
-    }
-    
-    finishThinking() {
         this.isThinking = false;
         this.game?.hideBotThinking?.();
         
         if (this.isActive && !this.game?.gameEnded) {
-            this.scheduleNextMove();
+            this.scheduleThink();
+        }
+    }
+
+    // ==================== 1. ALGI SİSTEMİ ====================
+    
+    perceive() {
+        const p = this.brain.perception;
+        
+        // Skorlar
+        p.myScore = this.game?.opponentScore || 0;
+        p.playerScore = this.game?.score || 0;
+        p.scoreDiff = p.myScore - p.playerScore;
+        
+        // Zaman
+        const elapsed = Date.now() - (this.game?.matchStartTime || Date.now());
+        const total = this.game?.matchDuration || 120000;
+        p.timeLeft = Math.max(0, 100 - (elapsed / total) * 100);
+        
+        // İlerleme hesapla
+        p.myProgress = this.calculateMyProgress();
+        p.playerProgress = this.estimatePlayerProgress();
+        
+        // Tehdit seviyesi (0-100)
+        // Oyuncu önde + hızlı ilerliyorsa tehdit yüksek
+        const playerLead = Math.max(0, p.playerScore - p.myScore);
+        const playerSpeed = this.calculatePlayerSpeed();
+        p.threat = Math.min(100, (playerLead / 2) + (playerSpeed * 10));
+        
+        // Fırsat seviyesi (0-100)
+        // Güvenli hücreler varsa ve skor iyi ise fırsat yüksek
+        const safeCellCount = this.knowledge.safeCells.size;
+        p.opportunity = Math.min(100, safeCellCount * 20 + (p.scoreDiff > 0 ? 20 : 0));
+        
+        // Aciliyet (0-100)
+        // Az zaman + geride = yüksek aciliyet
+        const timePressure = (100 - p.timeLeft) / 2;
+        const scorePressure = Math.max(0, -p.scoreDiff) / 2;
+        p.urgency = Math.min(100, timePressure + scorePressure);
+        
+        // Oyuncu skor geçmişini kaydet
+        if (p.playerScore !== this.brain.memory.lastPlayerScore) {
+            this.brain.memory.playerScoreHistory.push({
+                score: p.playerScore,
+                time: Date.now()
+            });
+            // Son 10 kaydı tut
+            if (this.brain.memory.playerScoreHistory.length > 10) {
+                this.brain.memory.playerScoreHistory.shift();
+            }
+            this.brain.memory.lastPlayerScore = p.playerScore;
         }
     }
     
-    delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    // ==================== GAME STATE ANALYSIS ====================
-    
-    analyzeGameState() {
-        this.analyzeMyBoard();
-        this.analyzeOpponentBoard();
-        this.gameStats.decisionsAnalyzed++;
-    }
-    
-    analyzeMyBoard() {
-        if (!this.board?.grid) return;
+    calculateMyProgress() {
+        if (!this.board?.grid) return 0;
         
         let revealed = 0;
-        let flagged = 0;
-        let unrevealed = 0;
+        const total = this.gridSize * this.gridSize;
+        const mineCount = this.board.mines?.length || 0;
+        const safeCells = total - mineCount;
         
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
-                const cell = this.board.grid[y][x];
-                if (cell.isRevealed) {
-                    revealed++;
-                } else if (cell.isFlagged) {
-                    flagged++;
-                    this.flaggedCells.add(`${x},${y}`);
-                } else {
-                    unrevealed++;
-                }
+                if (this.board.grid[y][x].isRevealed) revealed++;
             }
         }
         
-        const totalCells = this.gridSize * this.gridSize;
-        const mineCount = this.board.mines?.length || 0;
-        const safeCells = totalCells - mineCount;
-        
-        this.boardAnalysis.myBoard = {
-            revealedCells: revealed,
-            flaggedCells: flagged,
-            safeCellsRemaining: safeCells - revealed,
-            minesRemaining: mineCount - flagged,
-            completionPercent: safeCells > 0 ? (revealed / safeCells) * 100 : 0,
-            totalUnrevealed: unrevealed
-        };
-        
-        // Update probability map
-        if (this.settings.useProbability) {
-            this.calculateProbabilities();
-        }
+        return safeCells > 0 ? (revealed / safeCells) * 100 : 0;
     }
     
-    analyzeOpponentBoard() {
-        if (!this.game) return;
+    estimatePlayerProgress() {
+        const playerScore = this.game?.score || 0;
+        // Ortalama hücre başına 5 puan varsay
+        const estimatedCells = playerScore / 5;
+        const mineCount = this.game?.mineCount || 15;
+        const safeCells = (this.gridSize * this.gridSize) - mineCount;
+        return Math.min(100, (estimatedCells / safeCells) * 100);
+    }
+    
+    calculatePlayerSpeed() {
+        const history = this.brain.memory.playerScoreHistory;
+        if (history.length < 2) return 0;
         
-        const now = Date.now();
-        const playerScore = this.game.score || 0;
-        const timeDelta = (now - this.boardAnalysis.opponentBoard.lastScoreCheck) / 1000;
+        const recent = history.slice(-3);
+        if (recent.length < 2) return 0;
         
-        if (timeDelta > 0.5) {
-            const scoreDelta = playerScore - this.boardAnalysis.opponentBoard.lastScore;
-            this.boardAnalysis.opponentBoard.scoreRate = scoreDelta / timeDelta;
-            
-            if (scoreDelta > 15) {
-                this.boardAnalysis.opponentBoard.isOnStreak = true;
-                this.boardAnalysis.opponentBoard.streakLength++;
-            } else {
-                this.boardAnalysis.opponentBoard.isOnStreak = false;
-                this.boardAnalysis.opponentBoard.streakLength = 0;
-            }
-            
-            this.boardAnalysis.opponentBoard.lastScore = playerScore;
-            this.boardAnalysis.opponentBoard.lastScoreCheck = now;
-        }
+        const first = recent[0];
+        const last = recent[recent.length - 1];
+        const timeDiff = (last.time - first.time) / 1000; // saniye
+        const scoreDiff = last.score - first.score;
         
-        const estimatedCells = Math.floor(playerScore / 5);
-        const mineCount = this.game.mineCount || 15;
-        const totalSafeCells = (this.gridSize * this.gridSize) - mineCount;
-        this.boardAnalysis.opponentBoard.estimatedCompletion = Math.min(100, (estimatedCells / totalSafeCells) * 100);
+        return timeDiff > 0 ? scoreDiff / timeDiff : 0;
     }
 
-    // ==================== PROBABILITY CALCULATION (CSP) ====================
+    // ==================== 2. DUYGU SİSTEMİ ====================
     
-    calculateProbabilities() {
+    updateMood() {
+        const p = this.brain.perception;
+        
+        // Ruh halini belirle
+        if (p.scoreDiff > 50 && p.timeLeft < 30) {
+            this.brain.mood = 'confident';  // Çok önde ve az zaman
+        } else if (p.scoreDiff < -60 && p.timeLeft < 25) {
+            this.brain.mood = 'desperate';  // Çok geride ve az zaman
+        } else if (p.threat > 60) {
+            this.brain.mood = 'aggressive'; // Tehdit altında
+        } else if (p.scoreDiff > 30) {
+            this.brain.mood = 'defensive';  // Önde, korumacı ol
+        } else {
+            this.brain.mood = 'calm';       // Normal oyna
+        }
+    }
+
+    // ==================== 3. TAHTA ANALİZİ ====================
+    
+    analyzeBoard() {
         if (!this.board?.grid) return;
         
-        this.probabilityMap.clear();
-        this.knownSafe.clear();
-        this.knownMines.clear();
+        this.knowledge.safeCells.clear();
+        this.knowledge.mineCells.clear();
+        this.knowledge.probabilityMap.clear();
         
-        const unrevealed = [];
+        // Tüm açık hücreleri analiz et
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.board.grid[y][x];
-                if (!cell.isRevealed && !cell.isFlagged) {
-                    unrevealed.push({ x, y });
+                
+                if (cell.isRevealed && !cell.isMine && cell.neighborCount > 0) {
+                    this.analyzeNumberCell(x, y, cell.neighborCount);
+                }
+                
+                if (cell.isFlagged) {
+                    this.knowledge.flaggedCells.add(`${x},${y}`);
                 }
             }
         }
         
-        const totalMines = this.board.mines?.length || 15;
-        const flaggedCount = this.flaggedCells.size;
-        const remainingMines = totalMines - flaggedCount;
-        const baseProbability = unrevealed.length > 0 ? remainingMines / unrevealed.length : 0;
+        // Kalan hücreler için temel olasılık hesapla
+        this.calculateBaseProbabilities();
+    }
+    
+    analyzeNumberCell(x, y, number) {
+        const neighbors = this.getNeighbors(x, y);
         
-        unrevealed.forEach(cell => {
-            this.probabilityMap.set(`${cell.x},${cell.y}`, baseProbability);
-        });
+        const unrevealed = [];
+        let flaggedCount = 0;
         
-        if (this.settings.useCSP) {
-            this.applyCSPConstraints();
+        for (const n of neighbors) {
+            const cell = this.board.grid[n.y][n.x];
+            if (cell.isFlagged) {
+                flaggedCount++;
+            } else if (!cell.isRevealed) {
+                unrevealed.push(n);
+            }
+        }
+        
+        const remainingMines = number - flaggedCount;
+        
+        if (unrevealed.length === 0) return;
+        
+        // Tüm kalanlar mayın
+        if (remainingMines === unrevealed.length && remainingMines > 0) {
+            for (const n of unrevealed) {
+                this.knowledge.mineCells.add(`${n.x},${n.y}`);
+            }
+        }
+        
+        // Tüm kalanlar güvenli
+        if (remainingMines === 0) {
+            for (const n of unrevealed) {
+                this.knowledge.safeCells.add(`${n.x},${n.y}`);
+            }
+        }
+        
+        // Olasılık hesapla
+        if (remainingMines > 0 && remainingMines < unrevealed.length) {
+            const prob = remainingMines / unrevealed.length;
+            for (const n of unrevealed) {
+                const key = `${n.x},${n.y}`;
+                const current = this.knowledge.probabilityMap.get(key) || 0;
+                this.knowledge.probabilityMap.set(key, Math.max(current, prob));
+            }
         }
     }
     
-    applyCSPConstraints() {
-        // Apply constraints from revealed number cells
+    calculateBaseProbabilities() {
+        const totalMines = this.board?.mines?.length || 15;
+        const flagged = this.knowledge.flaggedCells.size;
+        const remaining = totalMines - flagged;
+        
+        let unrevealedCount = 0;
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.board.grid[y][x];
-                if (!cell.isRevealed || cell.isMine || cell.neighborCount === 0) continue;
-                
-                const neighbors = this.getNeighbors(x, y);
-                const unrevealedNeighbors = neighbors.filter(n => {
-                    const nc = this.board.grid[n.y][n.x];
-                    return !nc.isRevealed && !nc.isFlagged;
-                });
-                const flaggedNeighbors = neighbors.filter(n => 
-                    this.board.grid[n.y][n.x].isFlagged
-                ).length;
-                
-                const remainingMines = cell.neighborCount - flaggedNeighbors;
-                
-                if (unrevealedNeighbors.length === 0) continue;
-                
-                // All unrevealed neighbors are mines
-                if (remainingMines === unrevealedNeighbors.length && remainingMines > 0) {
-                    unrevealedNeighbors.forEach(n => {
-                        const key = `${n.x},${n.y}`;
-                        this.probabilityMap.set(key, 1.0);
-                        this.knownMines.add(key);
-                    });
+                const key = `${x},${y}`;
+                if (!cell.isRevealed && !cell.isFlagged && !this.knowledge.probabilityMap.has(key)) {
+                    unrevealedCount++;
                 }
-                
-                // All neighbors are safe
-                if (remainingMines === 0) {
-                    unrevealedNeighbors.forEach(n => {
-                        const key = `${n.x},${n.y}`;
-                        this.probabilityMap.set(key, 0.0);
-                        this.knownSafe.add(key);
-                    });
-                }
-                
-                // Probability calculation
-                if (remainingMines > 0 && remainingMines < unrevealedNeighbors.length) {
-                    const probability = remainingMines / unrevealedNeighbors.length;
-                    unrevealedNeighbors.forEach(n => {
-                        const key = `${n.x},${n.y}`;
-                        const current = this.probabilityMap.get(key) || 0.5;
-                        this.probabilityMap.set(key, Math.max(current, probability));
-                    });
+            }
+        }
+        
+        const baseProb = unrevealedCount > 0 ? remaining / unrevealedCount : 0.5;
+        
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.board.grid[y][x];
+                const key = `${x},${y}`;
+                if (!cell.isRevealed && !cell.isFlagged && !this.knowledge.probabilityMap.has(key)) {
+                    this.knowledge.probabilityMap.set(key, baseProb);
                 }
             }
         }
@@ -480,205 +422,83 @@ export class BotAI {
         return neighbors;
     }
 
-    // ==================== STRATEGY SYSTEM ====================
+    // ==================== 4. KARAR SİSTEMİ ====================
     
-    updateStrategy() {
-        const myScore = this.game?.opponentScore || 0;
-        const playerScore = this.game?.score || 0;
-        const scoreDiff = myScore - playerScore;
+    decide() {
+        const p = this.brain.perception;
+        const mood = this.brain.mood;
         
-        const timeRemaining = this.getTimeRemaining();
-        const totalTime = this.game?.matchDuration || 120000;
-        const timePercent = timeRemaining / totalTime;
+        // Her karar anında düşün: "Şu an en iyi ne yapabilirim?"
         
-        // Determine strategy mode
-        let newMode = 'balanced';
+        const options = [];
         
-        if (scoreDiff > 50 && timePercent < 0.5) {
-            newMode = 'defensive';
-            this.strategy.riskTolerance = 0.15;
-        } else if (scoreDiff < -50 && timePercent < 0.25) {
-            newMode = 'desperate';
-            this.strategy.riskTolerance = 0.6;
-        } else if (scoreDiff < -30) {
-            newMode = 'aggressive';
-            this.strategy.riskTolerance = 0.45;
-        } else if (scoreDiff > 30) {
-            newMode = 'defensive';
-            this.strategy.riskTolerance = 0.2;
+        // Seçenek 1: Güvenli hücre aç
+        if (this.knowledge.safeCells.size > 0) {
+            options.push({
+                type: 'reveal_safe',
+                priority: 90,  // Yüksek öncelik
+                reason: 'Kesin güvenli hücre var'
+            });
+        }
+        
+        // Seçenek 2: Mayın bayrakla
+        const unflaggedMine = this.findUnflaggedMine();
+        if (unflaggedMine) {
+            options.push({
+                type: 'flag_mine',
+                target: unflaggedMine,
+                priority: 85,
+                reason: 'Kesin mayın bulundu'
+            });
+        }
+        
+        // Seçenek 3: Düşük olasılıklı hücre aç
+        const lowRiskCell = this.findLowRiskCell();
+        if (lowRiskCell) {
+            options.push({
+                type: 'reveal_risky',
+                target: lowRiskCell,
+                priority: 50 + (100 - lowRiskCell.probability * 100),
+                reason: `Düşük risk: %${(lowRiskCell.probability * 100).toFixed(0)}`
+            });
+        }
+        
+        // Seçenek 4: Güç kullan
+        const powerDecision = this.considerPower();
+        if (powerDecision) {
+            options.push(powerDecision);
+        }
+        
+        // Seçenek 5: Rastgele hamle (son çare)
+        const randomCell = this.findRandomCell();
+        if (randomCell) {
+            options.push({
+                type: 'reveal_random',
+                target: randomCell,
+                priority: 20,
+                reason: 'Başka seçenek yok'
+            });
+        }
+        
+        // Zeka seviyesine göre seçim
+        if (options.length === 0) return null;
+        
+        // Önceliklere göre sırala
+        options.sort((a, b) => b.priority - a.priority);
+        
+        // Akıllı bot en iyi seçeneği seçer, aptal bot rastgele seçer
+        if (Math.random() < this.config.intelligence) {
+            return options[0];
         } else {
-            newMode = 'balanced';
-            this.strategy.riskTolerance = 0.3;
+            // Rastgele bir seçenek seç
+            const idx = Math.floor(Math.random() * Math.min(3, options.length));
+            return options[idx];
         }
-        
-        if (newMode !== this.strategy.mode) {
-            console.log(`[AI] Strategy: ${this.strategy.mode} -> ${newMode} (diff: ${scoreDiff})`);
-            this.strategy.mode = newMode;
-        }
-        
-        this.strategy.powerBudget = Math.max(0, myScore - playerScore - 40);
-        this.strategy.targetScore = playerScore + 30;
     }
     
-    getTimeRemaining() {
-        if (!this.game) return 60000;
-        const elapsed = Date.now() - (this.game.matchStartTime || Date.now());
-        return Math.max(0, (this.game.matchDuration || 120000) - elapsed);
-    }
-
-    // ==================== POWER DECISION SYSTEM ====================
-    
-    shouldUsePower() {
-        const timeSinceLast = Date.now() - this.strategy.lastPowerTime;
-        if (timeSinceLast < this.strategy.powerCooldown) return false;
-        
-        const myScore = this.game?.opponentScore || 0;
-        // Minimum skor: en ucuz güç (radar=30) + biraz pay
-        if (myScore < 40) return false;
-        
-        return true;
-    }
-    
-    selectAndUsePower() {
-        const myScore = this.game?.opponentScore || 0;
-        const playerScore = this.game?.score || 0;
-        const scoreDiff = myScore - playerScore;
-        const timePercent = this.getTimeRemaining() / (this.game?.matchDuration || 120000);
-        
-        const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
-        
-        console.log(`[AI POWER] Evaluating powers - myScore: ${myScore}, playerScore: ${playerScore}, diff: ${scoreDiff}, timeLeft: ${(timePercent * 100).toFixed(1)}%`);
-        
-        // ============ FREEZE ============
-        // Oyuncu önde gidiyorsa veya çok hızlıysa dondur
-        if (this.strategy.powersUsed.freeze < this.strategy.powerLimits.freeze) {
-            const playerAhead = playerScore > myScore + 30; // 30 puan önde
-            const playerFast = this.boardAnalysis.opponentBoard.scoreRate > 8; // Hızlı oynuyor
-            const midToLateGame = timePercent < 0.70; // Oyunun %70'i geçmiş
-            const canAfford = myScore >= costs.freeze + 20;
-            
-            if (canAfford && midToLateGame && (playerAhead || playerFast)) {
-                console.log(`[AI POWER] FREEZE conditions met - ahead: ${playerAhead}, fast: ${playerFast}`);
-                if (this.usePower('freeze')) {
-                    return true;
-                }
-            }
-        }
-        
-        // ============ RADAR ============
-        // Güvenli hücre bulamadığında veya rastgele şansla
-        if (this.strategy.powersUsed.radar < this.strategy.powerLimits.radar) {
-            const noSafeCells = this.knownSafe.size === 0;
-            const stuck = this.stuckCounter >= 1;
-            const randomChance = Math.random() < 0.15; // %15 şans
-            const canAfford = myScore >= costs.radar + 10;
-            
-            if (canAfford && (noSafeCells || stuck || randomChance)) {
-                console.log(`[AI POWER] RADAR conditions met - noSafe: ${noSafeCells}, stuck: ${stuck}`);
-                if (this.usePower('radar')) {
-                    return true;
-                }
-            }
-        }
-        
-        // ============ SAFEBURST ============
-        // Gerideyken veya oyunun ortasında hız kazanmak için
-        if (this.strategy.powersUsed.safeburst < this.strategy.powerLimits.safeburst) {
-            const behind = playerScore > myScore + 20;
-            const midGame = timePercent < 0.60 && timePercent > 0.20;
-            const canAfford = myScore >= costs.safeburst + 15;
-            
-            if (canAfford && behind && midGame) {
-                console.log(`[AI POWER] SAFEBURST conditions met - behind by ${playerScore - myScore}`);
-                if (this.usePower('safeburst')) {
-                    return true;
-                }
-            }
-        }
-        
-        // ============ SHIELD ============
-        // Öndeyken ve oyunun sonuna yaklaşırken koruma
-        if (this.strategy.powersUsed.shield < this.strategy.powerLimits.shield) {
-            const ahead = scoreDiff > 15;
-            const lateGame = timePercent < 0.35; // Son %35
-            const canAfford = myScore >= costs.shield + 20;
-            
-            if (canAfford && ahead && lateGame) {
-                console.log(`[AI POWER] SHIELD conditions met - ahead by ${scoreDiff}`);
-                if (this.usePower('shield')) {
-                    return true;
-                }
-            }
-        }
-        
-        return false;
-    }
-    
-    usePower(power) {
-        if (!this.game?.useBotPower) return false;
-        
-        const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
-        const cost = costs[power];
-        
-        if (this.game.useBotPower(power, cost)) {
-            this.strategy.powersUsed[power]++;
-            this.strategy.lastPowerTime = Date.now();
-            this.learning.powerEffectiveness[power].uses++;
-            
-            if (power === 'radar') {
-                this.processRadarResult();
-            }
-            
-            return true;
-        }
-        return false;
-    }
-    
-    processRadarResult() {
-        if (!this.board?.highlightedMines) return;
-        
-        this.board.highlightedMines.forEach(mine => {
-            const key = `${mine.x},${mine.y}`;
-            this.knownMines.add(key);
-            this.probabilityMap.set(key, 1.0);
-        });
-        
-        console.log(`[AI] Radar found ${this.board.highlightedMines.length} mines`);
-    }
-
-    // ==================== DECISION MAKING ====================
-    
-    makeDecision() {
-        // Priority 1: Flag confirmed mines
-        const mineToFlag = this.findMineToFlag();
-        if (mineToFlag) {
-            return { type: 'flag', ...mineToFlag };
-        }
-        
-        // Priority 2: Reveal confirmed safe cells
-        const safeCell = this.findSafeCell();
-        if (safeCell) {
-            return { type: 'reveal', ...safeCell };
-        }
-        
-        // Priority 3: Best probabilistic move
-        const probMove = this.findBestProbabilisticMove();
-        if (probMove) {
-            return { type: 'reveal', ...probMove };
-        }
-        
-        // Priority 4: Fallback
-        const fallback = this.findFallbackMove();
-        if (fallback) {
-            return { type: 'reveal', ...fallback };
-        }
-        
-        return null;
-    }
-    
-    findMineToFlag() {
-        for (const key of this.knownMines) {
-            if (!this.flaggedCells.has(key)) {
+    findUnflaggedMine() {
+        for (const key of this.knowledge.mineCells) {
+            if (!this.knowledge.flaggedCells.has(key)) {
                 const [x, y] = key.split(',').map(Number);
                 const cell = this.board?.grid?.[y]?.[x];
                 if (cell && !cell.isFlagged && !cell.isRevealed) {
@@ -689,22 +509,12 @@ export class BotAI {
         return null;
     }
     
-    findSafeCell() {
-        for (const key of this.knownSafe) {
-            const [x, y] = key.split(',').map(Number);
-            const cell = this.board?.grid?.[y]?.[x];
-            if (cell && !cell.isRevealed && !cell.isFlagged) {
-                return { x, y, confidence: 1.0 };
-            }
-        }
-        return null;
-    }
-    
-    findBestProbabilisticMove() {
+    findLowRiskCell() {
         const candidates = [];
+        const maxRisk = this.brain.mood === 'desperate' ? 0.6 : 0.35;
         
-        for (const [key, prob] of this.probabilityMap) {
-            if (prob < this.strategy.riskTolerance && !this.knownMines.has(key)) {
+        for (const [key, prob] of this.knowledge.probabilityMap) {
+            if (prob <= maxRisk && !this.knowledge.mineCells.has(key)) {
                 const [x, y] = key.split(',').map(Number);
                 const cell = this.board?.grid?.[y]?.[x];
                 if (cell && !cell.isRevealed && !cell.isFlagged) {
@@ -716,149 +526,197 @@ export class BotAI {
         if (candidates.length === 0) return null;
         
         candidates.sort((a, b) => a.probability - b.probability);
-        
-        // Apply mistakes for easier difficulties
-        if (Math.random() < this.settings.mistakeRate) {
-            const idx = Math.floor(Math.random() * Math.min(5, candidates.length));
-            return candidates[idx];
-        }
-        
-        // Pick from top 3 with weighted randomness
-        const top = candidates.slice(0, 3);
-        const weights = [0.6, 0.25, 0.15];
-        const rand = Math.random();
-        let cum = 0;
-        
-        for (let i = 0; i < top.length; i++) {
-            cum += weights[i];
-            if (rand < cum) return top[i];
-        }
-        
-        return top[0];
+        return candidates[0];
     }
     
-    findFallbackMove() {
+    findRandomCell() {
         const candidates = [];
         
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.board?.grid?.[y]?.[x];
                 const key = `${x},${y}`;
-                if (cell && !cell.isRevealed && !cell.isFlagged && !this.knownMines.has(key)) {
-                    const isEdge = x === 0 || x === this.gridSize-1 || y === 0 || y === this.gridSize-1;
-                    candidates.push({ x, y, score: isEdge ? 2 : 1 });
+                if (cell && !cell.isRevealed && !cell.isFlagged && !this.knowledge.mineCells.has(key)) {
+                    candidates.push({ x, y });
                 }
             }
         }
         
         if (candidates.length === 0) return null;
-        
-        candidates.sort((a, b) => b.score - a.score);
-        const idx = Math.floor(Math.random() * Math.min(5, candidates.length));
-        return candidates[idx];
+        return candidates[Math.floor(Math.random() * candidates.length)];
     }
+
+    // ==================== GÜÇ KARAR SİSTEMİ ====================
     
-    // ==================== DECISION EXECUTION ====================
-    
-    executeDecision(decision) {
-        if (decision.type === 'flag') {
-            this.game?.makeBotFlag?.(decision.x, decision.y);
-            this.flaggedCells.add(`${decision.x},${decision.y}`);
-            this.stuckCounter = 0;
-        } else if (decision.type === 'reveal') {
-            const result = this.game?.makeBotMove?.(decision.x, decision.y);
-            this.gameStats.movesMade++;
+    considerPower() {
+        const p = this.brain.perception;
+        const mood = this.brain.mood;
+        const timeSinceLast = Date.now() - this.brain.powers.lastUseTime;
+        
+        // Cooldown kontrolü
+        if (timeSinceLast < this.config.minPowerCooldown) return null;
+        
+        // Yeterli skor var mı?
+        if (p.myScore < 40) return null;
+        
+        // Güç kullanma eğilimi (rastgele faktör)
+        if (Math.random() > this.config.powerAwareness) return null;
+        
+        const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
+        const used = this.brain.powers.used;
+        const max = this.config.maxPowers;
+        
+        // ===== FREEZE =====
+        // Düşünce: "Oyuncu benden iyi gidiyor, onu durdurmam lazım"
+        if (used.freeze < max.freeze && p.myScore >= costs.freeze) {
+            const shouldFreeze = 
+                (p.threat > 50) ||                           // Tehdit altındayım
+                (p.playerScore > p.myScore + 25) ||          // Oyuncu önde
+                (mood === 'aggressive' && p.urgency > 40) || // Agresifim ve aceleci
+                (mood === 'desperate');                       // Çaresizim
             
-            if (result) {
-                if (result.hitMine) {
-                    this.gameStats.minesHit++;
-                    this.stuckCounter++;
-                } else {
-                    this.stuckCounter = 0;
-                }
-                
-                this.moveHistory.push({
-                    x: decision.x,
-                    y: decision.y,
-                    result: result.hitMine ? 'mine' : 'safe',
-                    time: Date.now()
-                });
+            if (shouldFreeze) {
+                return {
+                    type: 'use_power',
+                    power: 'freeze',
+                    priority: 80 + p.threat / 2,
+                    reason: `Freeze: Tehdit ${p.threat.toFixed(0)}%, Oyuncu ${p.playerScore - p.myScore} önde`
+                };
             }
         }
-    }
-    
-    // ==================== RECOVERY SYSTEM ====================
-    
-    tryRecovery() {
-        console.log('[AI] Recovery attempt');
         
-        const wrongFlag = this.findSuspiciousFlag();
-        if (wrongFlag) {
-            this.removeFlag(wrongFlag.x, wrongFlag.y);
-            this.stuckCounter = 0;
-            return;
-        }
-        
-        const random = this.findFallbackMove();
-        if (random) {
-            this.game?.makeBotMove?.(random.x, random.y);
-            this.stuckCounter = 0;
-        }
-    }
-    
-    findSuspiciousFlag() {
-        for (const key of this.flaggedCells) {
-            const [x, y] = key.split(',').map(Number);
-            const cell = this.board?.grid?.[y]?.[x];
-            if (!cell?.isFlagged) continue;
+        // ===== RADAR =====
+        // Düşünce: "Nereye bassam bilmiyorum, bilgiye ihtiyacım var"
+        if (used.radar < max.radar && p.myScore >= costs.radar) {
+            const noInfo = this.knowledge.safeCells.size === 0;
+            const stuck = this.brain.memory.successStreak < -2;
             
-            const neighbors = this.getNeighbors(x, y);
-            for (const n of neighbors) {
-                const nc = this.board.grid[n.y][n.x];
-                if (!nc.isRevealed || nc.isMine) continue;
-                
-                const nNeighbors = this.getNeighbors(n.x, n.y);
-                const flagCount = nNeighbors.filter(nn => 
-                    this.board.grid[nn.y][nn.x].isFlagged
-                ).length;
-                
-                if (flagCount > nc.neighborCount) {
-                    return { x, y };
-                }
+            if (noInfo || stuck) {
+                return {
+                    type: 'use_power',
+                    power: 'radar',
+                    priority: 70,
+                    reason: 'Radar: Bilgi gerekli'
+                };
             }
         }
+        
+        // ===== SAFEBURST =====
+        // Düşünce: "Gerideyim, hızlı puan almam lazım"
+        if (used.safeburst < max.safeburst && p.myScore >= costs.safeburst) {
+            const behind = p.playerScore > p.myScore + 20;
+            const needSpeed = p.urgency > 50;
+            
+            if (behind && needSpeed) {
+                return {
+                    type: 'use_power',
+                    power: 'safeburst',
+                    priority: 75,
+                    reason: `SafeBurst: ${p.playerScore - p.myScore} puan gerideyim`
+                };
+            }
+        }
+        
+        // ===== SHIELD =====
+        // Düşünce: "Öndeyim, avantajımı korumam lazım"
+        if (used.shield < max.shield && p.myScore >= costs.shield) {
+            const ahead = p.myScore > p.playerScore + 20;
+            const lateGame = p.timeLeft < 40;
+            
+            if (ahead && lateGame) {
+                return {
+                    type: 'use_power',
+                    power: 'shield',
+                    priority: 65,
+                    reason: `Shield: ${p.myScore - p.playerScore} önde, koruma`
+                };
+            }
+        }
+        
         return null;
     }
+
+    // ==================== 5. EYLEM SİSTEMİ ====================
     
-    removeFlag(x, y) {
-        const key = `${x},${y}`;
-        this.flaggedCells.delete(key);
-        this.knownMines.delete(key);
+    execute(decision) {
+        console.log(`[AI] ${this.brain.mood.toUpperCase()} | ${decision.type}: ${decision.reason}`);
         
-        if (this.game?.makeBotUnflag) {
-            this.game.makeBotUnflag(x, y);
+        switch (decision.type) {
+            case 'reveal_safe':
+                this.revealSafeCell();
+                break;
+                
+            case 'flag_mine':
+                this.flagCell(decision.target.x, decision.target.y);
+                break;
+                
+            case 'reveal_risky':
+            case 'reveal_random':
+                this.revealCell(decision.target.x, decision.target.y);
+                break;
+                
+            case 'use_power':
+                this.usePower(decision.power);
+                break;
+        }
+    }
+    
+    revealSafeCell() {
+        const safeKey = this.knowledge.safeCells.values().next().value;
+        if (!safeKey) return;
+        
+        const [x, y] = safeKey.split(',').map(Number);
+        this.knowledge.safeCells.delete(safeKey);
+        this.revealCell(x, y);
+    }
+    
+    revealCell(x, y) {
+        const result = this.game?.makeBotMove?.(x, y);
+        
+        if (result) {
+            this.brain.memory.myMoveHistory.push({
+                x, y,
+                result: result.hitMine ? 'mine' : 'safe',
+                time: Date.now()
+            });
+            
+            if (result.hitMine) {
+                this.brain.memory.mistakeCount++;
+                this.brain.memory.successStreak = Math.min(0, this.brain.memory.successStreak - 1);
+            } else {
+                this.brain.memory.successStreak = Math.max(0, this.brain.memory.successStreak + 1);
+            }
+        }
+    }
+    
+    flagCell(x, y) {
+        this.game?.makeBotFlag?.(x, y);
+        this.knowledge.flaggedCells.add(`${x},${y}`);
+    }
+    
+    usePower(power) {
+        const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
+        
+        if (this.game?.useBotPower?.(power, costs[power])) {
+            this.brain.powers.used[power]++;
+            this.brain.powers.lastUseTime = Date.now();
+            
+            this.brain.memory.powerHistory.push({
+                power,
+                time: Date.now(),
+                myScore: this.brain.perception.myScore,
+                playerScore: this.brain.perception.playerScore
+            });
+            
+            console.log(`[AI] POWER USED: ${power.toUpperCase()}`);
         }
     }
 
-    // ==================== FREEZE HANDLING ====================
-    
-    freeze(duration) {
-        this.isFrozen = true;
-        this.frozenUntil = Date.now() + duration;
-    }
-
-    // ==================== GAME END LEARNING ====================
+    // ==================== ÖĞRENME ====================
     
     endGameLearning(won, finalScore, opponentScore) {
-        this.learning.totalGames++;
-        if (won) this.learning.wins++;
-        else this.learning.losses++;
-        
-        const prevTotal = this.learning.avgScore * (this.learning.totalGames - 1);
-        this.learning.avgScore = (prevTotal + finalScore) / this.learning.totalGames;
-        
-        this.saveLearning();
-        
-        console.log(`[AI] Game: ${won ? 'WON' : 'LOST'} | ${finalScore} vs ${opponentScore} | Record: ${this.learning.wins}/${this.learning.totalGames}`);
+        console.log(`[AI] Game End: ${won ? 'WON' : 'LOST'} | ${finalScore} vs ${opponentScore}`);
+        console.log(`[AI] Mistakes: ${this.brain.memory.mistakeCount}`);
+        console.log(`[AI] Powers used:`, this.brain.powers.used);
     }
 }
