@@ -45,10 +45,26 @@ export class BotAI {
             }
         };
         
+        // POWER USAGE LIMITS - Prevent spam
+        this.powerUsageThisGame = {
+            freeze: 0,
+            shield: 0,
+            radar: 0,
+            safeburst: 0
+        };
+        this.powerMaxUsage = {
+            freeze: 1,      // Maximum 1 freeze per game
+            shield: 1,      // Maximum 1 shield per game  
+            radar: 2,       // Maximum 2 radar per game
+            safeburst: 1    // Maximum 1 safeburst per game
+        };
+        
         // Strategic state tracking
         this.strategicState = {
             lastPowerUsed: 0,
-            powerCooldown: 5000,
+            powerCooldown: 15000,  // 15 second cooldown between ANY power
+            lastFreezeTime: 0,
+            freezeCooldown: 60000, // 60 second cooldown for freeze specifically
             consecutiveSafeMoves: 0,
             consecutiveMineHits: 0,
             isDefensive: false,
@@ -479,6 +495,7 @@ export class BotAI {
     // ==================== STRATEGIC POWER SYSTEM ====================
     
     // BOT CORE PRINCIPLE: "Winning = Highest Score. Powers cost score, so use wisely!"
+    // RULE: Use powers VERY sparingly - they cost precious points!
 
     makeStrategicPowerDecision() {
         if (!this.game) return null;
@@ -486,7 +503,7 @@ export class BotAI {
         const gameState = this.captureGameState();
         const timeSinceLastPower = Date.now() - this.strategicState.lastPowerUsed;
         
-        // Don't spam powers - wait at least 5 seconds
+        // STRICT COOLDOWN - wait at least 15 seconds between ANY power
         if (timeSinceLastPower < this.strategicState.powerCooldown) {
             return null;
         }
@@ -497,80 +514,91 @@ export class BotAI {
         const timePercent = timeRemaining / (this.game?.matchDuration || 120000);
         const scoreDiff = botScore - playerScore; // Positive = bot ahead
         
-        // Update target score based on player
-        this.scoreStrategy.targetScore = playerScore + 50;
-        
-        // Calculate threat level
-        this.strategicState.playerThreatLevel = this.calculatePlayerThreat(gameState);
-        
-        // SCORE-AWARE POWER DECISION FRAMEWORK
-        // Rule 1: Never use power if it leaves bot unable to compete
-        // Rule 2: Only use power if expected value > cost
-        // Rule 3: Prioritize by situation urgency
+        // CONSERVATIVE APPROACH: Only use powers in critical situations
+        // If bot is ahead, NO NEED to use powers (preserve score lead!)
+        if (scoreDiff > 30) {
+            console.log('[BotAI] Ahead by 30+, conserving powers');
+            return null;
+        }
         
         const costs = { radar: 30, safeburst: 40, shield: 50, freeze: 60 };
         
         // ============ FREEZE STRATEGY ============
-        // HIGH VALUE when: Player is ahead and on a streak
-        // Cost: 60, Value: Stops player from scoring for 5 seconds
-        const freezeValue = this.calculateFreezeValue(gameState);
-        const shouldFreeze = freezeValue > costs.freeze && this.canUsePower('freeze');
-        
-        if (shouldFreeze) {
-            // Only freeze if bot has enough score buffer
-            if (botScore >= costs.freeze + 30) { // Keep at least 30 after using
-                if (this.usePower('freeze')) {
-                    console.log(`[BotAI STRATEGY] FREEZE used. Value: ${freezeValue}, Cost: ${costs.freeze}`);
-                    this.strategicState.lastPowerUsed = Date.now();
-                    this.recordPowerUsage('freeze', true, gameState);
-                    return 'freeze';
+        // ONLY USE when player is significantly ahead AND near end of game
+        // Check freeze-specific cooldown (60 seconds)
+        const timeSinceFreeze = Date.now() - (this.strategicState.lastFreezeTime || 0);
+        if (timeSinceFreeze < this.strategicState.freezeCooldown) {
+            // Skip freeze, still on cooldown
+        } else if (this.powerUsageThisGame.freeze < this.powerMaxUsage.freeze) {
+            // Freeze conditions: Player 50+ ahead AND time < 40%
+            const playerFarAhead = playerScore > botScore + 50;
+            const lateGame = timePercent < 0.4;
+            
+            if (playerFarAhead && lateGame && this.canUsePower('freeze')) {
+                if (botScore >= costs.freeze + 50) { // Need good buffer
+                    if (this.usePower('freeze')) {
+                        console.log(`[BotAI STRATEGY] FREEZE used - player ${playerScore - botScore} ahead, time ${Math.round(timePercent*100)}%`);
+                        this.strategicState.lastPowerUsed = Date.now();
+                        this.strategicState.lastFreezeTime = Date.now();
+                        this.powerUsageThisGame.freeze++;
+                        this.recordPowerUsage('freeze', true, gameState);
+                        return 'freeze';
+                    }
                 }
             }
         }
         
         // ============ SHIELD STRATEGY ============
-        // HIGH VALUE when: Bot is ahead and near end, or taking risky moves
-        const shieldValue = this.calculateShieldValue(gameState);
-        const shouldShield = shieldValue > costs.shield && this.canUsePower('shield');
-        
-        if (shouldShield && !this.game?.opponentHasShield) {
-            if (botScore >= costs.shield + 20) {
-                if (this.usePower('shield')) {
-                    console.log(`[BotAI STRATEGY] SHIELD used. Value: ${shieldValue}, Cost: ${costs.shield}`);
-                    this.strategicState.lastPowerUsed = Date.now();
-                    this.recordPowerUsage('shield', true, gameState);
-                    return 'shield';
+        // ONLY USE when bot is slightly ahead and wants to protect lead near end
+        if (this.powerUsageThisGame.shield < this.powerMaxUsage.shield) {
+            const botSlightlyAhead = scoreDiff > 10 && scoreDiff < 40;
+            const veryLateGame = timePercent < 0.2;
+            const noSafeMoves = this.findGuaranteedSafeCells().length === 0;
+            
+            if (botSlightlyAhead && veryLateGame && !this.game?.opponentHasShield && this.canUsePower('shield')) {
+                if (botScore >= costs.shield + 30) {
+                    if (this.usePower('shield')) {
+                        console.log(`[BotAI STRATEGY] SHIELD used - protecting lead, time ${Math.round(timePercent*100)}%`);
+                        this.strategicState.lastPowerUsed = Date.now();
+                        this.powerUsageThisGame.shield++;
+                        this.recordPowerUsage('shield', true, gameState);
+                        return 'shield';
+                    }
                 }
             }
         }
         
         // ============ RADAR STRATEGY ============
-        // HIGH VALUE when: Many unrevealed cells, or stuck with no safe moves
-        // This prevents mine hits (-30 each) so value can be high
-        const radarValue = this.calculateRadarValue(gameState);
-        const shouldRadar = radarValue > costs.radar && this.canUsePower('radar');
-        
-        if (shouldRadar) {
-            if (this.usePower('radar')) {
-                console.log(`[BotAI STRATEGY] RADAR used. Value: ${radarValue}, Cost: ${costs.radar}`);
-                this.strategicState.lastPowerUsed = Date.now();
-                this.recordPowerUsage('radar', true, gameState);
-                return 'radar';
+        // ONLY USE when stuck with no safe moves AND hit mines recently
+        if (this.powerUsageThisGame.radar < this.powerMaxUsage.radar) {
+            const noSafeMoves = this.findGuaranteedSafeCells().length === 0;
+            const hitMinesRecently = this.strategicState.consecutiveMineHits >= 2;
+            
+            if (noSafeMoves && hitMinesRecently && this.canUsePower('radar')) {
+                if (botScore >= costs.radar + 20) {
+                    if (this.usePower('radar')) {
+                        console.log(`[BotAI STRATEGY] RADAR used - stuck and hit ${this.strategicState.consecutiveMineHits} mines`);
+                        this.strategicState.lastPowerUsed = Date.now();
+                        this.powerUsageThisGame.radar++;
+                        this.recordPowerUsage('radar', true, gameState);
+                        return 'radar';
+                    }
+                }
             }
         }
         
         // ============ SAFEBURST STRATEGY ============
-        // MODERATE VALUE: Gives ~15 points for 40 cost = net -25
-        // Only use when: REALLY behind and need quick recovery
-        const safeburstValue = this.calculateSafeburstValue(gameState);
-        const shouldSafeburst = safeburstValue > costs.safeburst && this.canUsePower('safeburst');
-        
-        if (shouldSafeburst) {
-            // Only if significantly behind
-            if (scoreDiff < -50 && botScore >= costs.safeburst) {
+        // ALMOST NEVER USE - costs 40, gives ~15 = net loss of 25!
+        // Only use if VERY behind AND time running out
+        if (this.powerUsageThisGame.safeburst < this.powerMaxUsage.safeburst) {
+            const veryBehind = playerScore > botScore + 80;
+            const desperateTime = timePercent < 0.15;
+            
+            if (veryBehind && desperateTime && this.canUsePower('safeburst')) {
                 if (this.usePower('safeburst')) {
-                    console.log(`[BotAI STRATEGY] SAFEBURST used. Value: ${safeburstValue}, Cost: ${costs.safeburst}`);
+                    console.log(`[BotAI STRATEGY] SAFEBURST used - desperate: ${playerScore - botScore} behind, ${Math.round(timePercent*100)}% time`);
                     this.strategicState.lastPowerUsed = Date.now();
+                    this.powerUsageThisGame.safeburst++;
                     this.recordPowerUsage('safeburst', true, gameState);
                     return 'safeburst';
                 }

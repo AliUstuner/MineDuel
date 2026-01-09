@@ -2595,6 +2595,9 @@ class GameClient {
                 
                 // Force re-render the bot board
                 this.botBoard.render();
+                
+                // Check if bot completed board after safeburst
+                this.checkBotWinCondition();
             } else {
                 console.log('[BOT POWER] SafeBurst - function not available!');
             }
