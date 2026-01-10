@@ -1034,3 +1034,8 @@ export class GameDataCollector {
 
 // Singleton instance
 export const dataCollector = new GameDataCollector();
+
+// Global erişim için window'a ekle (konsol kullanımı için)
+if (typeof window !== 'undefined') {
+    window.dataCollector = dataCollector;
+}
