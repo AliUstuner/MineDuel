@@ -717,9 +717,9 @@ export class BotAI {
         ps.estimatedProgress = Math.min(100, (estimatedCells / totalSafe) * 100);
         
         // Öğrenme: Oyuncu kalıplarını kaydet
-        if (ps.speed > 0) {
-            const l = this.learning.playerPatterns;
-            l.avgSpeed = (l.avgSpeed * 0.9) + (ps.speed * 0.1);
+        if (ps.speed > 0 && this.learning?.patterns) {
+            const l = this.learning.patterns;
+            l.avgPlayerSpeed = (l.avgPlayerSpeed * 0.9) + (ps.speed * 0.1);
         }
     }
     
