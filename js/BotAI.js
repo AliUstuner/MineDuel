@@ -28,8 +28,8 @@ export class BotAI {
         // Zorluk ayarları
         this.config = this.getConfig(difficulty);
         
-        // API endpoint
-        this.API_URL = '/api/botlearning';
+        // API endpoint - stats.js içinde birleştirildi
+        this.API_URL = '/api/stats';
         
         // Global öğrenme başlangıçta yüklenecek
         this.globalLearningLoaded = false;
@@ -262,7 +262,7 @@ export class BotAI {
      */
     async loadGlobalLearning() {
         try {
-            const response = await fetch(this.API_URL);
+            const response = await fetch(`${this.API_URL}?bot_learning=true`);
             if (!response.ok) {
                 console.warn('[AI] Global veri çekilemedi:', response.status);
                 return;
