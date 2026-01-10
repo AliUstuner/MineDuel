@@ -1,11 +1,12 @@
 /**
- * BotAI.js - GELİŞMİŞ YAPAY ZEKA SİSTEMİ
+ * BotAI.js - TAM AKILLI YAPAY ZEKA
  * 
  * Özellikler:
- * - Committee AI: Birden fazla AI birlikte karar verir
- * - Öğrenme Sistemi: Tüm oyunlardan öğrenir
- * - Adaletli Zorluk: Her seviye dengeli
- * - Akıllı Güç Kullanımı: Stratejik güç yönetimi
+ * - Radar sonuçlarını görür ve mayınları işaretler
+ * - Oyuncu tahtasını izler ve analiz eder
+ * - Her oyundan öğrenir ve gelişir
+ * - Güçleri stratejik olarak seçer
+ * - Kendi kararlarını verir
  */
 
 export class BotAI {
@@ -21,156 +22,379 @@ export class BotAI {
         this.frozenUntil = 0;
         
         // Zorluk ayarları
-        this.config = this.getBalancedConfig(difficulty);
+        this.config = this.getConfig(difficulty);
         
-        // Beyin durumu
+        // ==================== AKILLI BEYİN ====================
         this.brain = {
-            perception: {
-                myScore: 0,
-                playerScore: 0,
-                scoreDiff: 0,
-                timeLeft: 100,
-                gamePhase: 'early' // early, mid, late, critical
+            // Kendi durumum
+            myState: {
+                score: 0,
+                progress: 0,
+                minesHit: 0,
+                movesThisGame: 0
             },
-            mood: 'balanced',
+            
+            // Rakip (oyuncu) analizi
+            playerState: {
+                score: 0,
+                lastScore: 0,
+                scoreHistory: [],
+                speed: 0,           // Puan/saniye
+                isOnStreak: false,
+                estimatedProgress: 0
+            },
+            
+            // Oyun durumu
+            gameState: {
+                phase: 'early',     // early, mid, late, critical
+                timeLeft: 100,
+                scoreDiff: 0,
+                urgency: 0          // 0-100
+            },
+            
+            // Ruh hali - güç kararlarını etkiler
+            mood: 'balanced',       // balanced, aggressive, defensive, desperate
+            
             stuckCount: 0
         };
         
-        // Bilgi deposu
+        // ==================== BİLGİ DEPOSU ====================
         this.knowledge = {
             safeCells: new Set(),
             mineCells: new Set(),
             flaggedCells: new Set(),
             wrongFlags: new Set(),
-            probabilities: new Map()
+            probabilities: new Map(),
+            
+            // RADAR SONUÇLARI - Radardan öğrenilen mayınlar
+            radarMines: new Set(),
+            
+            // İşlenmemiş radar mayınları (bayraklanmayı bekliyor)
+            pendingRadarMines: []
         };
         
-        // GÜÇ YÖNETİMİ - Basit ve çalışan sistem
+        // ==================== GÜÇ YÖNETİMİ ====================
         this.powers = {
             used: { freeze: 0, shield: 0, radar: 0, safeburst: 0 },
             lastUseTime: 0,
             cooldown: this.config.powerCooldown,
-            limits: this.config.powerLimits
+            limits: this.config.powerLimits,
+            
+            // Her güç için stratejik puanlama
+            scores: { freeze: 0, shield: 0, radar: 0, safeburst: 0 }
         };
         
-        // Öğrenme sistemi
+        // ==================== ÖĞRENME SİSTEMİ ====================
         this.learning = this.loadLearning();
         
-        console.log(`[AI] ${difficulty.toUpperCase()} initialized | Games: ${this.learning.gamesPlayed}`);
+        console.log(`[AI] ${difficulty.toUpperCase()} | Win Rate: ${this.getWinRate()}%`);
     }
     
-    // ==================== ADALETLI ZORLUK SEVİYELERİ ====================
+    // ==================== ZORLUK AYARLARI ====================
     
-    getBalancedConfig(difficulty) {
+    getConfig(difficulty) {
         const configs = {
             easy: {
-                // Yavaş düşünür, sık hata yapar
                 thinkTime: { min: 1500, max: 2500 },
-                accuracy: 0.55,           // %55 doğru karar
-                mistakeChance: 0.20,      // %20 hata şansı
-                powerCooldown: 30000,     // 30 sn
+                accuracy: 0.55,
+                powerCooldown: 30000,
                 powerLimits: { freeze: 0, shield: 0, radar: 1, safeburst: 0 },
-                powerUseChance: 0.1,      // %10 güç kullanma şansı
-                riskTolerance: 0.25
+                riskTolerance: 0.25,
+                playerWatchRate: 0.3   // Oyuncuyu %30 izler
             },
             medium: {
-                // Dengeli oynar
                 thinkTime: { min: 800, max: 1400 },
                 accuracy: 0.75,
-                mistakeChance: 0.10,
-                powerCooldown: 20000,     // 20 sn
+                powerCooldown: 18000,
                 powerLimits: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
-                powerUseChance: 0.4,      // %40 güç kullanma şansı
-                riskTolerance: 0.30
+                riskTolerance: 0.30,
+                playerWatchRate: 0.6
             },
             hard: {
-                // Hızlı ve akıllı
                 thinkTime: { min: 500, max: 900 },
                 accuracy: 0.88,
-                mistakeChance: 0.05,
-                powerCooldown: 12000,     // 12 sn
+                powerCooldown: 12000,
                 powerLimits: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
-                powerUseChance: 0.6,
-                riskTolerance: 0.35
+                riskTolerance: 0.35,
+                playerWatchRate: 0.8
             },
             expert: {
-                // Çok hızlı, çok akıllı
                 thinkTime: { min: 250, max: 500 },
                 accuracy: 0.95,
-                mistakeChance: 0.02,
-                powerCooldown: 8000,      // 8 sn
+                powerCooldown: 8000,
                 powerLimits: { freeze: 2, shield: 1, radar: 3, safeburst: 2 },
-                powerUseChance: 0.8,      // %80 güç kullanma şansı
-                riskTolerance: 0.45
+                riskTolerance: 0.40,
+                playerWatchRate: 0.95  // Oyuncuyu sürekli izler
             }
         };
         return configs[difficulty] || configs.medium;
     }
     
-    // ==================== ÖĞRENME SİSTEMİ ====================
+    // ==================== SAĞLAM ÖĞRENME SİSTEMİ ====================
     
     loadLearning() {
+        const STORAGE_KEY = 'mineduel_ai_v5';
+        
         try {
-            const data = localStorage.getItem('mineduel_bot_learning_v2');
+            const data = localStorage.getItem(STORAGE_KEY);
             if (data) {
                 const parsed = JSON.parse(data);
-                console.log('[AI] Learning data loaded:', parsed.gamesPlayed, 'games');
-                return parsed;
+                
+                // Versiyon kontrolü - eski veriyi temizle
+                if (!parsed.version || parsed.version < 5) {
+                    console.log('[AI] Eski öğrenme verisi tespit edildi, sıfırlanıyor...');
+                    localStorage.removeItem(STORAGE_KEY);
+                    localStorage.removeItem('mineduel_ai_v4');
+                    localStorage.removeItem('mineduel_bot_learning_v2');
+                    return this.getDefaultLearning();
+                }
+                
+                // Veri doğrulaması
+                if (this.isValidLearningData(parsed)) {
+                    console.log(`[AI] Öğrenme verisi yüklendi | Oyunlar: ${parsed.stats.gamesPlayed} | Kazanma: %${this.calculateWinRate(parsed)}`);
+                    return parsed;
+                }
             }
-        } catch (e) {}
+        } catch (e) {
+            console.warn('[AI] Öğrenme verisi yüklenemedi:', e);
+        }
         
+        return this.getDefaultLearning();
+    }
+    
+    isValidLearningData(data) {
+        // Temel yapı kontrolü
+        if (!data || typeof data !== 'object') return false;
+        if (!data.stats || !data.powers || !data.strategies || !data.patterns) return false;
+        
+        // Sayısal değer kontrolü
+        const stats = data.stats;
+        if (typeof stats.gamesPlayed !== 'number' || isNaN(stats.gamesPlayed)) return false;
+        if (typeof stats.wins !== 'number' || isNaN(stats.wins)) return false;
+        
+        // Mantık kontrolü - wins, gamesPlayed'den fazla olamaz
+        if (stats.wins > stats.gamesPlayed) return false;
+        if (stats.losses > stats.gamesPlayed) return false;
+        
+        return true;
+    }
+    
+    getDefaultLearning() {
         return {
-            gamesPlayed: 0,
-            wins: 0,
-            losses: 0,
+            version: 5,  // Versiyon numarası
             
-            // Güç etkinliği
-            powerStats: {
-                freeze: { used: 0, wonAfter: 0 },
-                shield: { used: 0, savedMine: 0 },
-                radar: { used: 0, foundMine: 0 },
-                safeburst: { used: 0, pointsGained: 0 }
+            // Temel istatistikler
+            stats: {
+                gamesPlayed: 0,
+                wins: 0,
+                losses: 0,
+                draws: 0,
+                totalScore: 0,
+                avgScore: 0
             },
             
-            // Hamle istatistikleri
-            moveStats: {
-                totalMoves: 0,
-                correctMoves: 0,
-                mineHits: 0
+            // Güç etkinliği - basit ve güvenilir
+            powers: {
+                freeze: { used: 0, wonAfter: 0, effectiveness: 0.5 },
+                shield: { used: 0, savedMines: 0, effectiveness: 0.5 },
+                radar: { used: 0, minesFound: 0, effectiveness: 0.5 },
+                safeburst: { used: 0, pointsGained: 0, effectiveness: 0.5 }
             },
             
-            // Kazanma stratejileri
-            winPatterns: {
-                aggressivePower: 0,
-                defensivePlay: 0,
-                speedWin: 0
+            // Strateji başarısı
+            strategies: {
+                aggressive: { used: 0, won: 0, rate: 0.33 },
+                defensive: { used: 0, won: 0, rate: 0.33 },
+                balanced: { used: 0, won: 0, rate: 0.34 }
+            },
+            
+            // Oyuncu kalıpları
+            patterns: {
+                avgPlayerSpeed: 5,      // Ortalama puan/saniye
+                avgPlayerScore: 200,    // Ortalama oyuncu skoru
+                playerUsedPowers: 0,    // Oyuncu güç kullanım sayısı
+                gamesAnalyzed: 0
             }
         };
     }
     
+    calculateWinRate(data) {
+        if (!data?.stats?.gamesPlayed || data.stats.gamesPlayed === 0) return 0;
+        return ((data.stats.wins / data.stats.gamesPlayed) * 100).toFixed(1);
+    }
+    
     saveLearning() {
+        const STORAGE_KEY = 'mineduel_ai_v5';
+        
         try {
-            localStorage.setItem('mineduel_bot_learning_v2', JSON.stringify(this.learning));
-        } catch (e) {}
+            // Kaydetmeden önce doğrula
+            if (!this.isValidLearningData(this.learning)) {
+                console.warn('[AI] Geçersiz öğrenme verisi, kaydetme iptal');
+                return;
+            }
+            
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(this.learning));
+        } catch (e) {
+            console.warn('[AI] Öğrenme verisi kaydedilemedi:', e);
+        }
+    }
+    
+    // Oyun sırasında güç kullanımını kaydet
+    recordPowerUsage(power, result) {
+        const p = this.learning.powers[power];
+        if (!p) return;
+        
+        p.used++;
+        
+        // Özel sonuçları kaydet
+        if (power === 'radar' && result?.minesFound) {
+            p.minesFound += result.minesFound;
+        }
+        if (power === 'shield' && result?.savedFromMine) {
+            p.savedMines++;
+        }
+        if (power === 'safeburst' && result?.pointsGained) {
+            p.pointsGained += result.pointsGained;
+        }
+    }
+    
+    // Oyun sonu öğrenme - EN ÖNEMLİ FONKSİYON
+    learnFromGame(gameResult) {
+        const l = this.learning;
+        const stats = l.stats;
+        
+        // Temel istatistikler
+        stats.gamesPlayed++;
+        stats.totalScore += gameResult.myScore || 0;
+        stats.avgScore = Math.round(stats.totalScore / stats.gamesPlayed);
+        
+        if (gameResult.won) {
+            stats.wins++;
+        } else if (gameResult.draw) {
+            stats.draws++;
+        } else {
+            stats.losses++;
+        }
+        
+        // Güç etkinliği güncelle
+        for (const power of ['freeze', 'shield', 'radar', 'safeburst']) {
+            const p = l.powers[power];
+            if (this.powers.used[power] > 0) {
+                if (gameResult.won) {
+                    p.wonAfter++;
+                }
+                // Etkinlik oranı = kazandığı oyunlar / kullandığı oyunlar
+                p.effectiveness = p.used > 0 ? (p.wonAfter / p.used) : 0.5;
+                // 0.2 - 0.8 arasında tut (çok düşük veya yüksek olmasın)
+                p.effectiveness = Math.max(0.2, Math.min(0.8, p.effectiveness));
+            }
+        }
+        
+        // Strateji başarısı güncelle
+        const mood = this.brain.mood;
+        if (mood === 'aggressive' || mood === 'desperate') {
+            l.strategies.aggressive.used++;
+            if (gameResult.won) l.strategies.aggressive.won++;
+        } else if (mood === 'defensive') {
+            l.strategies.defensive.used++;
+            if (gameResult.won) l.strategies.defensive.won++;
+        } else {
+            l.strategies.balanced.used++;
+            if (gameResult.won) l.strategies.balanced.won++;
+        }
+        
+        // Strateji oranlarını güncelle
+        for (const strat of ['aggressive', 'defensive', 'balanced']) {
+            const s = l.strategies[strat];
+            s.rate = s.used > 0 ? (s.won / s.used) : 0.33;
+            s.rate = Math.max(0.1, Math.min(0.9, s.rate));
+        }
+        
+        // Oyuncu kalıplarını güncelle
+        const pat = l.patterns;
+        const playerScore = gameResult.playerScore || 0;
+        const playerSpeed = this.brain.playerState.speed || 5;
+        
+        pat.gamesAnalyzed++;
+        // Hareketli ortalama (son oyunlara daha fazla ağırlık)
+        const weight = Math.min(0.3, 1 / pat.gamesAnalyzed);
+        pat.avgPlayerScore = Math.round(pat.avgPlayerScore * (1 - weight) + playerScore * weight);
+        pat.avgPlayerSpeed = pat.avgPlayerSpeed * (1 - weight) + playerSpeed * weight;
+        
+        // Kaydet
+        this.saveLearning();
+        
+        console.log(`[AI] Öğrenme güncellendi | Kazanma: %${this.calculateWinRate(l)} | En iyi strateji: ${this.getBestStrategy()}`);
+    }
+    
+    // En iyi stratejiyi öğrenmeden al
+    getBestStrategy() {
+        const strats = this.learning.strategies;
+        let best = 'balanced';
+        let bestRate = strats.balanced.rate;
+        
+        if (strats.aggressive.rate > bestRate && strats.aggressive.used >= 3) {
+            best = 'aggressive';
+            bestRate = strats.aggressive.rate;
+        }
+        if (strats.defensive.rate > bestRate && strats.defensive.used >= 3) {
+            best = 'defensive';
+        }
+        
+        return best;
+    }
+    
+    // Güç önerisi al (öğrenmeye göre)
+    getPowerRecommendation() {
+        const powers = this.learning.powers;
+        let best = null;
+        let bestEff = 0;
+        
+        for (const [power, data] of Object.entries(powers)) {
+            if (data.effectiveness > bestEff && data.used >= 2) {
+                best = power;
+                bestEff = data.effectiveness;
+            }
+        }
+        
+        return { power: best, effectiveness: bestEff };
+    }
+    
+    getWinRate() {
+        return this.calculateWinRate(this.learning);
     }
     
     // ==================== YAŞAM DÖNGÜSÜ ====================
     
     start(board, gridSize) {
+        // Clear any previous state completely
+        this.stop();
+        
         this.board = board;
         this.gridSize = gridSize;
         this.isActive = true;
+        this.isThinking = false;
+        this.isFrozen = false;
+        this.frozenUntil = 0;
+        
         this.reset();
-        console.log(`[AI] Started on ${gridSize}x${gridSize}`);
+        
+        const winRate = this.getWinRate();
+        const bestStrat = this.getBestStrategy();
+        console.log(`[AI] Başladı | Zorluk: ${this.difficulty} | Oyunlar: ${this.learning.stats.gamesPlayed} | Kazanma: %${winRate} | En iyi strateji: ${bestStrat}`);
+        
         this.scheduleThink();
     }
     
     stop() {
         this.isActive = false;
+        this.isThinking = false;
+        this.isFrozen = false;
         if (this.moveInterval) {
             clearTimeout(this.moveInterval);
             this.moveInterval = null;
         }
+        console.log('[AI] Stopped');
     }
     
     reset() {
@@ -179,10 +403,17 @@ export class BotAI {
         this.knowledge.flaggedCells.clear();
         this.knowledge.wrongFlags.clear();
         this.knowledge.probabilities.clear();
+        this.knowledge.radarMines.clear();
+        this.knowledge.pendingRadarMines = [];
+        
         this.powers.used = { freeze: 0, shield: 0, radar: 0, safeburst: 0 };
         this.powers.lastUseTime = 0;
+        this.powers.scores = { freeze: 0, shield: 0, radar: 0, safeburst: 0 };
+        
         this.brain.stuckCount = 0;
         this.brain.mood = 'balanced';
+        this.brain.myState = { score: 0, progress: 0, minesHit: 0, movesThisGame: 0 };
+        this.brain.playerState = { score: 0, lastScore: 0, scoreHistory: [], speed: 0, isOnStreak: false, estimatedProgress: 0 };
     }
     
     freeze(duration) {
@@ -214,46 +445,45 @@ export class BotAI {
         this.game?.showBotThinking?.();
         
         try {
-            // 1. Durumu algıla
+            // 1. Algıla - Hem kendi hem oyuncu durumunu
             this.perceive();
             
-            // 2. Tahtayı analiz et
+            // 2. Oyuncuyu izle ve analiz et
+            this.watchPlayer();
+            
+            // 3. Kendi tahtamı analiz et
             this.analyzeBoard();
             
-            // 3. Yanlış bayrakları tespit et
+            // 4. Radar sonuçlarını kontrol et
+            this.processRadarResults();
+            
+            // 5. Yanlış bayrakları tespit et
             this.detectWrongFlags();
             
-            // 4. GÜÇ KULLANMA KARARI - Her düşünmede kontrol et
-            if (this.shouldUsePower()) {
-                const powerUsed = this.tryUsePower();
-                if (powerUsed) {
-                    this.finishThinking();
-                    return;
-                }
-            }
+            // 6. Ruh halini belirle
+            this.updateMood();
             
-            // 5. En iyi hamleyi bul (Committee AI)
-            const decision = this.committeeDecision();
+            // 7. Güç stratejisini hesapla
+            this.calculatePowerStrategy();
             
-            // 6. Hamleyi uygula
-            if (decision) {
-                this.execute(decision);
+            // 8. En iyi eylemi seç
+            const action = this.decideAction();
+            
+            // 9. Eylemi uygula
+            if (action) {
+                this.executeAction(action);
                 this.brain.stuckCount = 0;
             } else {
                 this.brain.stuckCount++;
                 if (this.brain.stuckCount >= 3) {
-                    this.emergencyMove();
+                    this.emergencyAction();
                 }
             }
             
         } catch (error) {
-            console.error('[AI] Think error:', error);
+            console.error('[AI] Error:', error);
         }
         
-        this.finishThinking();
-    }
-    
-    finishThinking() {
         this.isThinking = false;
         this.game?.hideBotThinking?.();
         
@@ -262,33 +492,104 @@ export class BotAI {
         }
     }
     
-    // ==================== ALGI SİSTEMİ ====================
+    // ==================== 1. ALGI SİSTEMİ ====================
     
     perceive() {
-        const p = this.brain.perception;
+        const b = this.brain;
         
-        p.myScore = this.game?.opponentScore || 0;
-        p.playerScore = this.game?.score || 0;
-        p.scoreDiff = p.myScore - p.playerScore;
+        // Benim durumum
+        b.myState.score = this.game?.opponentScore || 0;
+        b.myState.progress = this.calculateMyProgress();
         
+        // Oyuncu durumu
+        b.playerState.score = this.game?.score || 0;
+        
+        // Zaman
         const elapsed = Date.now() - (this.game?.matchStartTime || Date.now());
         const total = this.game?.matchDuration || 120000;
-        p.timeLeft = Math.max(0, 100 - (elapsed / total) * 100);
+        b.gameState.timeLeft = Math.max(0, 100 - (elapsed / total) * 100);
+        
+        // Skor farkı
+        b.gameState.scoreDiff = b.myState.score - b.playerState.score;
         
         // Oyun fazı
-        if (p.timeLeft > 70) p.gamePhase = 'early';
-        else if (p.timeLeft > 40) p.gamePhase = 'mid';
-        else if (p.timeLeft > 15) p.gamePhase = 'late';
-        else p.gamePhase = 'critical';
+        if (b.gameState.timeLeft > 70) b.gameState.phase = 'early';
+        else if (b.gameState.timeLeft > 40) b.gameState.phase = 'mid';
+        else if (b.gameState.timeLeft > 15) b.gameState.phase = 'late';
+        else b.gameState.phase = 'critical';
         
-        // Ruh hali
-        if (p.scoreDiff < -50) this.brain.mood = 'desperate';
-        else if (p.scoreDiff < -20) this.brain.mood = 'aggressive';
-        else if (p.scoreDiff > 30) this.brain.mood = 'defensive';
-        else this.brain.mood = 'balanced';
+        // Aciliyet hesapla
+        const timePressure = (100 - b.gameState.timeLeft) / 2;
+        const scorePressure = Math.max(0, -b.gameState.scoreDiff) / 2;
+        b.gameState.urgency = Math.min(100, timePressure + scorePressure);
     }
     
-    // ==================== TAHTA ANALİZİ ====================
+    calculateMyProgress() {
+        if (!this.board?.grid) return 0;
+        
+        let revealed = 0;
+        const total = this.gridSize * this.gridSize;
+        const mineCount = this.board.mines?.length || 0;
+        const safeCells = total - mineCount;
+        
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                if (this.board.grid[y][x].isRevealed) revealed++;
+            }
+        }
+        
+        return safeCells > 0 ? (revealed / safeCells) * 100 : 0;
+    }
+    
+    // ==================== 2. OYUNCU İZLEME ====================
+    
+    watchPlayer() {
+        if (Math.random() > this.config.playerWatchRate) return;
+        
+        const ps = this.brain.playerState;
+        const currentScore = this.game?.score || 0;
+        
+        // Skor değişimi
+        if (currentScore !== ps.lastScore) {
+            const now = Date.now();
+            ps.scoreHistory.push({ score: currentScore, time: now });
+            
+            // Son 10 kaydı tut
+            if (ps.scoreHistory.length > 10) {
+                ps.scoreHistory.shift();
+            }
+            
+            // Hız hesapla
+            if (ps.scoreHistory.length >= 2) {
+                const first = ps.scoreHistory[0];
+                const last = ps.scoreHistory[ps.scoreHistory.length - 1];
+                const timeDiff = (last.time - first.time) / 1000;
+                const scoreDiff = last.score - first.score;
+                ps.speed = timeDiff > 0 ? scoreDiff / timeDiff : 0;
+            }
+            
+            // Streak kontrolü
+            const recentGain = currentScore - ps.lastScore;
+            ps.isOnStreak = recentGain > 20;
+            
+            ps.lastScore = currentScore;
+        }
+        
+        // Tahmini ilerleme
+        const avgPointsPerCell = 5;
+        const estimatedCells = currentScore / avgPointsPerCell;
+        const mineCount = this.game?.mineCount || 15;
+        const totalSafe = (this.gridSize * this.gridSize) - mineCount;
+        ps.estimatedProgress = Math.min(100, (estimatedCells / totalSafe) * 100);
+        
+        // Öğrenme: Oyuncu kalıplarını kaydet
+        if (ps.speed > 0) {
+            const l = this.learning.playerPatterns;
+            l.avgSpeed = (l.avgSpeed * 0.9) + (ps.speed * 0.1);
+        }
+    }
+    
+    // ==================== 3. TAHTA ANALİZİ ====================
     
     analyzeBoard() {
         if (!this.board?.grid) return;
@@ -296,6 +597,11 @@ export class BotAI {
         this.knowledge.safeCells.clear();
         this.knowledge.mineCells.clear();
         this.knowledge.probabilities.clear();
+        
+        // Radar mayınlarını mineCells'e ekle
+        for (const key of this.knowledge.radarMines) {
+            this.knowledge.mineCells.add(key);
+        }
         
         // Bayraklı hücreleri güncelle
         this.knowledge.flaggedCells.clear();
@@ -307,7 +613,7 @@ export class BotAI {
             }
         }
         
-        // Sayı hücrelerinden bilgi çıkar
+        // Sayı hücrelerinden analiz
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.board.grid[y][x];
@@ -317,7 +623,6 @@ export class BotAI {
             }
         }
         
-        // Temel olasılıkları hesapla
         this.calculateBaseProbabilities();
     }
     
@@ -336,17 +641,14 @@ export class BotAI {
         
         if (unrevealed.length === 0) return;
         
-        // Kesin mayınlar
         if (remainingMines === unrevealed.length && remainingMines > 0) {
             unrevealed.forEach(n => this.knowledge.mineCells.add(`${n.x},${n.y}`));
         }
         
-        // Kesin güvenli
         if (remainingMines === 0) {
             unrevealed.forEach(n => this.knowledge.safeCells.add(`${n.x},${n.y}`));
         }
         
-        // Olasılık
         if (remainingMines > 0 && remainingMines < unrevealed.length) {
             const prob = remainingMines / unrevealed.length;
             unrevealed.forEach(n => {
@@ -401,7 +703,33 @@ export class BotAI {
         return neighbors;
     }
     
-    // ==================== YANLIŞ BAYRAK TESPİTİ ====================
+    // ==================== 4. RADAR SONUÇLARINI İŞLE ====================
+    
+    processRadarResults() {
+        // Radar tarafından bulunan mayınları kontrol et
+        if (this.board?.highlightedMines && this.board.highlightedMines.length > 0) {
+            for (const mine of this.board.highlightedMines) {
+                const key = `${mine.x},${mine.y}`;
+                
+                // Zaten bilmiyorsak kaydet
+                if (!this.knowledge.radarMines.has(key)) {
+                    this.knowledge.radarMines.add(key);
+                    this.knowledge.mineCells.add(key);
+                    
+                    // Bayraklanmamışsa listeye ekle
+                    if (!this.knowledge.flaggedCells.has(key)) {
+                        this.knowledge.pendingRadarMines.push({ x: mine.x, y: mine.y });
+                        console.log(`[AI] Radar mayın buldu: (${mine.x},${mine.y})`);
+                    }
+                }
+            }
+            
+            // Öğrenme: Radar etkinliğini kaydet
+            this.learning.powerEffectiveness.radar.minesFound += this.board.highlightedMines.length;
+        }
+    }
+    
+    // ==================== 5. YANLIŞ BAYRAK TESPİTİ ====================
     
     detectWrongFlags() {
         this.knowledge.wrongFlags.clear();
@@ -411,8 +739,9 @@ export class BotAI {
                 const cell = this.board?.grid?.[y]?.[x];
                 if (!cell?.isFlagged) continue;
                 
-                // Bu bayrak kesin güvenli olarak işaretlenmişse yanlış
                 const key = `${x},${y}`;
+                
+                // Güvenli olarak bilinen bir hücre bayraklıysa yanlış
                 if (this.knowledge.safeCells.has(key)) {
                     this.knowledge.wrongFlags.add(key);
                     continue;
@@ -430,7 +759,6 @@ export class BotAI {
                         if (this.board.grid[nn.y][nn.x].isFlagged) flagCount++;
                     }
                     
-                    // Bayrak sayısı numara'dan fazlaysa yanlış bayrak var
                     if (flagCount > nc.neighborCount) {
                         this.knowledge.wrongFlags.add(key);
                         break;
@@ -440,71 +768,222 @@ export class BotAI {
         }
     }
     
-    // ==================== COMMITTEE AI - ÇOKLU KARAR ====================
+    // ==================== 6. RUH HALİ ====================
     
-    committeeDecision() {
-        // 3 farklı strateji ile karar ver
-        const strategies = [
-            this.safeFirstStrategy(),      // Güvenli öncelikli
-            this.probabilisticStrategy(),  // Olasılık bazlı
-            this.aggressiveStrategy()      // Agresif
-        ];
+    updateMood() {
+        const diff = this.brain.gameState.scoreDiff;
+        const phase = this.brain.gameState.phase;
+        const playerSpeed = this.brain.playerState.speed;
         
-        // Her stratejiyi puanla
-        const votes = [];
+        // Öğrenmeden en iyi stratejiyi al
+        const bestStrategy = this.getBestStrategy();
         
-        for (const decision of strategies) {
-            if (decision) {
-                votes.push(decision);
-            }
-        }
+        // Oyuncu beklenenden hızlıysa agresif ol
+        const expectedSpeed = this.learning.patterns.avgPlayerSpeed || 5;
+        const playerFaster = playerSpeed > expectedSpeed * 1.2;
         
-        if (votes.length === 0) return null;
-        
-        // En yüksek öncelikli kararı seç
-        votes.sort((a, b) => b.priority - a.priority);
-        
-        // Zorluk seviyesine göre doğru kararı seç
-        if (Math.random() < this.config.accuracy) {
-            return votes[0]; // En iyi karar
+        if (diff < -60 && (phase === 'late' || phase === 'critical')) {
+            this.brain.mood = 'desperate';
+        } else if (diff < -30 || playerFaster) {
+            this.brain.mood = 'aggressive';
+        } else if (diff > 40) {
+            this.brain.mood = 'defensive';
         } else {
-            // Hata yap - rastgele seç
-            const idx = Math.floor(Math.random() * votes.length);
-            return votes[idx];
+            // Öğrenilmiş en iyi stratejiyi kullan (3+ oyundan sonra)
+            if (this.learning.stats.gamesPlayed >= 3) {
+                this.brain.mood = bestStrategy;
+            } else {
+                this.brain.mood = 'balanced';
+            }
         }
     }
     
-    safeFirstStrategy() {
-        // Önce yanlış bayrağı düzelt
+    // ==================== 7. GÜÇ STRATEJİSİ HESAPLA ====================
+    
+    calculatePowerStrategy() {
+        const scores = this.powers.scores;
+        const b = this.brain;
+        const diff = b.gameState.scoreDiff;
+        const phase = b.gameState.phase;
+        const playerSpeed = b.playerState.speed;
+        const myScore = b.myState.score;
+        
+        // Öğrenmeden güç etkinliklerini al
+        const powerEff = this.learning.powers;
+        
+        // Her güç için puan hesapla (0-100)
+        
+        // FREEZE: Oyuncu hızlı veya önde ise yüksek
+        scores.freeze = 0;
+        if (playerSpeed > 5) scores.freeze += 40;
+        if (diff < -20) scores.freeze += 30;
+        if (b.playerState.isOnStreak) scores.freeze += 20;
+        if (phase === 'critical' && diff < 0) scores.freeze += 30;
+        // Öğrenmeden bonus (etkinlik 0.5'ten yüksekse)
+        if (powerEff.freeze.effectiveness > 0.5) {
+            scores.freeze += Math.round((powerEff.freeze.effectiveness - 0.5) * 40);
+        }
+        
+        // RADAR: Güvenli hücre bulamadığımda yüksek
+        scores.radar = 0;
+        if (this.knowledge.safeCells.size === 0) scores.radar += 50;
+        if (this.brain.stuckCount >= 1) scores.radar += 30;
+        if (phase === 'early' || phase === 'mid') scores.radar += 20;
+        // Öğrenmeden bonus
+        if (powerEff.radar.effectiveness > 0.5) {
+            scores.radar += Math.round((powerEff.radar.effectiveness - 0.5) * 40);
+        }
+        
+        // SAFEBURST: Gerideyken ve hız gerektiğinde yüksek
+        scores.safeburst = 0;
+        if (diff < -25) scores.safeburst += 40;
+        if (b.gameState.urgency > 50) scores.safeburst += 30;
+        if (phase !== 'early') scores.safeburst += 20;
+        // Öğrenmeden bonus
+        if (powerEff.safeburst.effectiveness > 0.5) {
+            scores.safeburst += Math.round((powerEff.safeburst.effectiveness - 0.5) * 40);
+        }
+        
+        // SHIELD: Öndeyken ve late game'de yüksek
+        scores.shield = 0;
+        if (diff > 20) scores.shield += 40;
+        if (phase === 'late' || phase === 'critical') scores.shield += 30;
+        if (diff > 40) scores.shield += 20;
+        // Öğrenmeden bonus
+        if (powerEff.shield.effectiveness > 0.5) {
+            scores.shield += Math.round((powerEff.shield.effectiveness - 0.5) * 40);
+        }
+        
+        // Maliyet kontrolü - yeterli puan yoksa sıfırla
+        const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
+        for (const power of Object.keys(scores)) {
+            if (myScore < costs[power]) {
+                scores[power] = 0;
+            }
+            // Limit kontrolü
+            if (this.powers.used[power] >= this.powers.limits[power]) {
+                scores[power] = 0;
+            }
+        }
+    }
+    
+    // ==================== 8. KARAR VER ====================
+    
+    decideAction() {
+        const actions = [];
+        
+        // En yüksek öncelik: Yanlış bayrağı düzelt
         if (this.knowledge.wrongFlags.size > 0) {
-            const wrongKey = this.knowledge.wrongFlags.values().next().value;
-            const [x, y] = wrongKey.split(',').map(Number);
-            return { type: 'unflag', x, y, priority: 100, reason: 'Yanlış bayrak düzelt' };
-        }
-        
-        // Kesin güvenli hücre
-        if (this.knowledge.safeCells.size > 0) {
-            const key = this.knowledge.safeCells.values().next().value;
-            const [x, y] = key.split(',').map(Number);
-            return { type: 'reveal', x, y, priority: 95, reason: 'Kesin güvenli' };
-        }
-        
-        // Kesin mayını bayrakla
-        for (const key of this.knowledge.mineCells) {
-            if (!this.knowledge.flaggedCells.has(key)) {
+            for (const key of this.knowledge.wrongFlags) {
                 const [x, y] = key.split(',').map(Number);
                 const cell = this.board?.grid?.[y]?.[x];
-                if (cell && !cell.isFlagged && !cell.isRevealed) {
-                    return { type: 'flag', x, y, priority: 90, reason: 'Kesin mayın' };
+                if (cell && cell.isFlagged && !cell.isRevealed) {
+                    actions.push({ type: 'unflag', x, y, priority: 100, reason: 'Yanlış bayrak düzelt' });
+                    break;
                 }
             }
         }
         
-        return null;
+        // Radar mayınlarını bayrakla
+        while (this.knowledge.pendingRadarMines.length > 0) {
+            const mine = this.knowledge.pendingRadarMines[0];
+            const cell = this.board?.grid?.[mine.y]?.[mine.x];
+            if (cell && !cell.isFlagged && !cell.isRevealed) {
+                actions.push({ type: 'flag', x: mine.x, y: mine.y, priority: 95, reason: 'Radar mayını bayrakla' });
+                break;
+            } else {
+                // Bu mayın zaten işlenmiş, listeden çıkar
+                this.knowledge.pendingRadarMines.shift();
+            }
+        }
+        
+        // Kesin güvenli hücre - GERÇEKTEN güvenli olanı bul
+        for (const key of this.knowledge.safeCells) {
+            const [x, y] = key.split(',').map(Number);
+            const cell = this.board?.grid?.[y]?.[x];
+            if (cell && !cell.isRevealed && !cell.isFlagged) {
+                actions.push({ type: 'reveal', x, y, priority: 90, reason: 'Kesin güvenli' });
+                break;
+            }
+        }
+        
+        // Kesin mayını bayrakla - GERÇEKTEN bayraklanmamış olanı bul
+        for (const key of this.knowledge.mineCells) {
+            const [x, y] = key.split(',').map(Number);
+            const cell = this.board?.grid?.[y]?.[x];
+            if (cell && !cell.isFlagged && !cell.isRevealed) {
+                actions.push({ type: 'flag', x, y, priority: 85, reason: 'Kesin mayın' });
+                break;
+            }
+        }
+        
+        // Güç kullan - en yüksek puanlı gücü seç
+        const powerAction = this.selectBestPower();
+        if (powerAction) {
+            actions.push(powerAction);
+        }
+        
+        // Düşük riskli hücre
+        const lowRisk = this.findLowRiskCell();
+        if (lowRisk) {
+            actions.push({
+                type: 'reveal',
+                x: lowRisk.x,
+                y: lowRisk.y,
+                priority: 60 - lowRisk.prob * 50,
+                reason: `Risk: %${(lowRisk.prob * 100).toFixed(0)}`
+            });
+        }
+        
+        // Rastgele hamle
+        const random = this.findRandomCell();
+        if (random) {
+            actions.push({ type: 'reveal', x: random.x, y: random.y, priority: 20, reason: 'Rastgele' });
+        }
+        
+        if (actions.length === 0) return null;
+        
+        // Sırala
+        actions.sort((a, b) => b.priority - a.priority);
+        
+        // Zorluk seviyesine göre seç
+        if (Math.random() < this.config.accuracy) {
+            return actions[0];
+        } else {
+            const idx = Math.floor(Math.random() * Math.min(3, actions.length));
+            return actions[idx];
+        }
     }
     
-    probabilisticStrategy() {
-        const maxRisk = this.config.riskTolerance;
+    selectBestPower() {
+        // Cooldown kontrolü
+        const timeSinceLast = Date.now() - this.powers.lastUseTime;
+        if (timeSinceLast < this.powers.cooldown) return null;
+        
+        // En yüksek puanlı gücü bul
+        const scores = this.powers.scores;
+        let bestPower = null;
+        let bestScore = 40;  // Minimum eşik
+        
+        for (const [power, score] of Object.entries(scores)) {
+            if (score > bestScore) {
+                bestScore = score;
+                bestPower = power;
+            }
+        }
+        
+        if (!bestPower) return null;
+        
+        return {
+            type: 'power',
+            power: bestPower,
+            priority: 70 + bestScore / 5,
+            reason: `${bestPower.toUpperCase()} (skor: ${bestScore})`
+        };
+    }
+    
+    findLowRiskCell() {
+        const maxRisk = this.brain.mood === 'desperate' ? 0.55 : this.config.riskTolerance;
         const candidates = [];
         
         for (const [key, prob] of this.knowledge.probabilities) {
@@ -518,150 +997,74 @@ export class BotAI {
         }
         
         if (candidates.length === 0) return null;
-        
         candidates.sort((a, b) => a.prob - b.prob);
-        const best = candidates[0];
-        
-        return {
-            type: 'reveal',
-            x: best.x,
-            y: best.y,
-            priority: 70 - best.prob * 50,
-            reason: `Risk: %${(best.prob * 100).toFixed(0)}`
-        };
+        return candidates[0];
     }
     
-    aggressiveStrategy() {
-        // Desperate modda daha riskli hamleler
-        if (this.brain.mood !== 'desperate' && this.brain.mood !== 'aggressive') {
-            return null;
-        }
-        
+    findRandomCell() {
         const candidates = [];
         
-        for (const [key, prob] of this.knowledge.probabilities) {
-            if (prob <= 0.5 && !this.knowledge.mineCells.has(key)) {
-                const [x, y] = key.split(',').map(Number);
-                const cell = this.board?.grid?.[y]?.[x];
-                if (cell && !cell.isRevealed && !cell.isFlagged) {
-                    candidates.push({ x, y, prob });
-                }
-            }
-        }
-        
-        if (candidates.length === 0) return null;
-        
-        // Rastgele bir tanesini seç (agresif)
-        const idx = Math.floor(Math.random() * Math.min(5, candidates.length));
-        const chosen = candidates[idx];
-        
-        return {
-            type: 'reveal',
-            x: chosen.x,
-            y: chosen.y,
-            priority: 40,
-            reason: 'Agresif hamle'
-        };
-    }
-    
-    emergencyMove() {
-        // Hiçbir şey bulamadığında acil hamle
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.board?.grid?.[y]?.[x];
                 const key = `${x},${y}`;
                 if (cell && !cell.isRevealed && !cell.isFlagged && !this.knowledge.mineCells.has(key)) {
-                    this.game?.makeBotMove?.(x, y);
-                    console.log('[AI] Emergency move:', x, y);
-                    return;
+                    candidates.push({ x, y });
                 }
             }
         }
+        
+        if (candidates.length === 0) return null;
+        return candidates[Math.floor(Math.random() * candidates.length)];
     }
     
-    // ==================== GÜÇ KULLANIM SİSTEMİ ====================
-    
-    shouldUsePower() {
-        const timeSinceLast = Date.now() - this.powers.lastUseTime;
-        if (timeSinceLast < this.powers.cooldown) return false;
-        
-        const myScore = this.game?.opponentScore || 0;
-        if (myScore < 35) return false;
-        
-        // Zorluk seviyesine göre şans
-        return Math.random() < this.config.powerUseChance;
+    emergencyAction() {
+        const random = this.findRandomCell();
+        if (random) {
+            this.game?.makeBotMove?.(random.x, random.y);
+            console.log('[AI] Acil hamle:', random.x, random.y);
+        }
     }
     
-    tryUsePower() {
-        const p = this.brain.perception;
-        const myScore = p.myScore;
-        const playerScore = p.playerScore;
-        const diff = myScore - playerScore;
+    // ==================== 9. EYLEM UYGULA ====================
+    
+    executeAction(action) {
+        console.log(`[AI] ${this.brain.mood.toUpperCase()} | ${action.type}: ${action.reason}`);
         
+        switch (action.type) {
+            case 'unflag':
+                this.game?.makeBotUnflag?.(action.x, action.y);
+                this.knowledge.flaggedCells.delete(`${action.x},${action.y}`);
+                break;
+                
+            case 'flag':
+                this.game?.makeBotFlag?.(action.x, action.y);
+                this.knowledge.flaggedCells.add(`${action.x},${action.y}`);
+                // Radar listesinden çıkar
+                this.knowledge.pendingRadarMines = this.knowledge.pendingRadarMines.filter(
+                    m => !(m.x === action.x && m.y === action.y)
+                );
+                break;
+                
+            case 'reveal':
+                const result = this.game?.makeBotMove?.(action.x, action.y);
+                this.brain.myState.movesThisGame++;
+                if (result?.hitMine) {
+                    this.brain.myState.minesHit++;
+                }
+                break;
+                
+            case 'power':
+                this.usePower(action.power);
+                break;
+        }
+    }
+    
+    usePower(power) {
         const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
+        const cost = costs[power];
         
-        console.log(`[AI] Trying power - Score: ${myScore}, Phase: ${p.gamePhase}, Mood: ${this.brain.mood}`);
-        
-        // ===== FREEZE =====
-        if (this.canUsePower('freeze', costs.freeze)) {
-            // Oyuncu önde veya hızlı ilerliyor
-            if (playerScore > myScore + 20 || this.brain.mood === 'desperate') {
-                if (this.usePower('freeze', costs.freeze)) {
-                    console.log('[AI] 🧊 FREEZE used!');
-                    return true;
-                }
-            }
-        }
-        
-        // ===== RADAR =====
-        if (this.canUsePower('radar', costs.radar)) {
-            // Güvenli hücre bulamadığında
-            if (this.knowledge.safeCells.size === 0 || this.brain.stuckCount >= 1) {
-                if (this.usePower('radar', costs.radar)) {
-                    console.log('[AI] 📡 RADAR used!');
-                    return true;
-                }
-            }
-        }
-        
-        // ===== SAFEBURST =====
-        if (this.canUsePower('safeburst', costs.safeburst)) {
-            // Gerideyken veya mid-game'de
-            if (diff < -15 && p.gamePhase !== 'early') {
-                if (this.usePower('safeburst', costs.safeburst)) {
-                    console.log('[AI] 💥 SAFEBURST used!');
-                    return true;
-                }
-            }
-        }
-        
-        // ===== SHIELD =====
-        if (this.canUsePower('shield', costs.shield)) {
-            // Öndeyken ve late game
-            if (diff > 15 && (p.gamePhase === 'late' || p.gamePhase === 'critical')) {
-                if (this.usePower('shield', costs.shield)) {
-                    console.log('[AI] 🛡️ SHIELD used!');
-                    return true;
-                }
-            }
-        }
-        
-        return false;
-    }
-    
-    canUsePower(power, cost) {
-        const myScore = this.game?.opponentScore || 0;
-        const used = this.powers.used[power] || 0;
-        const limit = this.powers.limits[power] || 0;
-        
-        return myScore >= cost && used < limit;
-    }
-    
-    usePower(power, cost) {
-        if (!this.game?.useBotPower) {
-            console.log('[AI] useBotPower not available');
-            return false;
-        }
+        if (!this.game?.useBotPower) return false;
         
         const result = this.game.useBotPower(power, cost);
         
@@ -669,58 +1072,42 @@ export class BotAI {
             this.powers.used[power]++;
             this.powers.lastUseTime = Date.now();
             
-            // Öğrenme istatistiği
-            this.learning.powerStats[power].used++;
-            this.saveLearning();
+            // Öğrenme - güç kullanımını kaydet
+            const p = this.learning.powers[power];
+            if (p) {
+                p.used++;
+            }
+            
+            console.log(`[AI] 💥 ${power.toUpperCase()} kullandı!`);
+            
+            // Radar sonuçlarını hemen işle
+            if (power === 'radar') {
+                setTimeout(() => {
+                    this.processRadarResults();
+                    // Radar mayın bulduysa kaydet
+                    if (this.knowledge.pendingRadarMines.length > 0) {
+                        this.learning.powers.radar.minesFound += this.knowledge.pendingRadarMines.length;
+                    }
+                }, 100);
+            }
         }
         
         return result;
     }
     
-    // ==================== HAMLE UYGULAMA ====================
+    // ==================== OYUN SONU ÖĞRENME (gameSupabase tarafından çağrılır) ====================
     
-    execute(decision) {
-        console.log(`[AI] ${decision.reason}`);
+    endGameLearning(botWon, playerScore = 0, botScore = 0, isDraw = false) {
+        // Yeni öğrenme sistemini kullan
+        this.learnFromGame({
+            won: botWon,
+            draw: isDraw,
+            myScore: botScore,
+            playerScore: playerScore
+        });
         
-        switch (decision.type) {
-            case 'unflag':
-                this.game?.makeBotUnflag?.(decision.x, decision.y);
-                this.knowledge.flaggedCells.delete(`${decision.x},${decision.y}`);
-                break;
-                
-            case 'reveal':
-                const result = this.game?.makeBotMove?.(decision.x, decision.y);
-                if (result?.hitMine) {
-                    this.learning.moveStats.mineHits++;
-                } else {
-                    this.learning.moveStats.correctMoves++;
-                }
-                this.learning.moveStats.totalMoves++;
-                break;
-                
-            case 'flag':
-                this.game?.makeBotFlag?.(decision.x, decision.y);
-                this.knowledge.flaggedCells.add(`${decision.x},${decision.y}`);
-                break;
-        }
-    }
-    
-    // ==================== OYUN SONU ====================
-    
-    endGameLearning(botWon) {
-        this.learning.gamesPlayed++;
-        if (botWon) {
-            this.learning.wins++;
-        } else {
-            this.learning.losses++;
-        }
-        
-        this.saveLearning();
-        
-        const winRate = this.learning.gamesPlayed > 0 
-            ? (this.learning.wins / this.learning.gamesPlayed * 100).toFixed(1) 
-            : 0;
-            
-        console.log(`[AI] Game ${botWon ? 'WON' : 'LOST'} | Record: ${this.learning.wins}/${this.learning.gamesPlayed} (${winRate}%)`);
+        const emoji = botWon ? '🏆' : (isDraw ? '🤝' : '💔');
+        const result = botWon ? 'KAZANDI' : (isDraw ? 'BERABERE' : 'KAYBETTİ');
+        console.log(`[AI] ${emoji} ${result} | Skor: ${botScore} vs ${playerScore} | Kazanma Oranı: %${this.getWinRate()}`);
     }
 }

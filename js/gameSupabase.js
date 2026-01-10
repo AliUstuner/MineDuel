@@ -2491,45 +2491,34 @@ class GameClient {
         return true;
     }
     
-    // Check if bot wins - 3 or fewer mine hits AND board completed
+    // Bot tahtayı tamamladığında oyunu bitir - EN YÜKSEK PUAN KAZANIR
     checkBotWinCondition() {
         if (this.gameEnded) return;
         
         // Check if bot's board is completed
         if (this.botBoard && this.botBoard.checkBoardCompleted()) {
-            console.log('[BOT WIN] Bot completed board!');
-            console.log('[BOT WIN] Bot mine hits:', this.opponentMineHitCount);
-            console.log('[BOT WIN] Bot score:', this.opponentScore, 'Player score:', this.score);
+            console.log('[BOT] Bot tahtayı tamamladı!');
+            console.log('[BOT] Bot skor:', this.opponentScore, 'Oyuncu skor:', this.score);
             
             // Stop bot immediately when board is completed
             this.bot?.stop();
             this.opponentCompletedBoard = true;
             
-            // Bot completed the board - check if it wins
-            if (this.opponentMineHitCount <= 3) {
-                // Bot had 3 or fewer mine hits - eligible for instant win if higher score
-                if (this.opponentScore > this.score) {
-                    console.log('[BOT WIN] Bot wins instantly with higher score!');
-                    this.showNotification('🤖 Bot tahtayı tamamladı ve kazandı!', 'error');
-                    setTimeout(() => {
-                        this.endGame(false); // Bot wins
-                    }, 1000);
-                    return;
-                }
+            // Oyunu hemen bitir - en yüksek puan kazanır
+            const botWins = this.opponentScore > this.score;
+            const isDraw = this.opponentScore === this.score;
+            
+            if (isDraw) {
+                this.showNotification('🤖 Bot tahtayı tamamladı! Berabere!', 'warning');
+            } else if (botWins) {
+                this.showNotification('🤖 Bot tahtayı tamamladı ve kazandı!', 'error');
+            } else {
+                this.showNotification('🤖 Bot tahtayı tamamladı ama puanın daha yüksek!', 'success');
             }
             
-            // Bot completed but doesn't win instantly
-            // Either >3 mine hits OR player has higher/equal score
-            // Game continues - player can still try to get higher score
-            this.showNotification('🤖 Bot tahtayı tamamladı! Süre bitene kadar en yüksek skoru hedefle!', 'warning');
-            
-            // If player also completed, end the game
-            if (this.playerBoard && this.playerBoard.checkBoardCompleted()) {
-                console.log('[BOTH COMPLETED] Both boards completed, ending game');
-                setTimeout(() => {
-                    this.endGame(this.score >= this.opponentScore);
-                }, 1000);
-            }
+            setTimeout(() => {
+                this.endGame(false); // false = oyuncu tahtayı tamamlamadı
+            }, 500);
         }
     }
     
@@ -2705,22 +2694,14 @@ class GameClient {
     }
     
     showGameResult() {
-        // Board completion wins over score
+        // EN YÜKSEK PUAN KAZANIR - basit mantık
         let isWinner, isDraw;
         
-        if (this.iCompletedBoard && !this.opponentCompletedBoard) {
-            // I completed, opponent didn't = I win
-            isWinner = true;
-            isDraw = false;
-        } else if (!this.iCompletedBoard && this.opponentCompletedBoard) {
-            // Opponent completed, I didn't = I lose
-            isWinner = false;
-            isDraw = false;
-        } else {
-            // Neither or both completed - use score
-            isWinner = this.score > this.opponentScore;
-            isDraw = this.score === this.opponentScore;
-        }
+        console.log('[RESULT] Final Scores - Player:', this.score, 'Opponent:', this.opponentScore);
+        
+        // Sadece puan bazlı kazanan
+        isWinner = this.score > this.opponentScore;
+        isDraw = this.score === this.opponentScore;
         
         // ==================== VERİ KAYIT SONLANDIR ====================
         const winReason = this.iCompletedBoard ? 'completion' : 
@@ -2734,10 +2715,11 @@ class GameClient {
             minePositions: this.playerBoard?.mines?.map(m => ({ x: m.x, y: m.y })) || []
         });
         
-        // Bot learning: record game result
+        // Bot learning: record game result with full data
         if (this.isBotMode && this.bot && typeof this.bot.endGameLearning === 'function') {
             // Bot wins if player loses (isWinner is from player perspective)
-            this.bot.endGameLearning(!isWinner && !isDraw);
+            const botWon = !isWinner && !isDraw;
+            this.bot.endGameLearning(botWon, this.score, this.opponentScore, isDraw);
         }
         
         if (isDraw) {
@@ -2751,7 +2733,14 @@ class GameClient {
             this.audio.playVictory();
         } else {
             this.resultIcon.textContent = '💔';
-            this.resultTitle.textContent = this.opponentCompletedBoard ? 'Rakip Tamamladı!' : 'Yenilgi';
+            // More descriptive defeat message
+            let defeatMsg = 'Yenilgi';
+            if (this.opponentCompletedBoard) {
+                defeatMsg = 'Rakip Tahtayı Tamamladı!';
+            } else if (this.opponentScore > this.score) {
+                defeatMsg = 'Puan Yetmedi!';
+            }
+            this.resultTitle.textContent = defeatMsg;
             this.resultTitle.className = 'result-title defeat';
             this.audio.playDefeat();
         }
@@ -2855,6 +2844,41 @@ class GameClient {
         this.menuScreen?.classList.remove('active');
         this.matchmakingScreen?.classList.remove('active');
         this.gameScreen?.classList.remove('active');
+        
+        // When going back to menu, clean up game state completely
+        if (name === 'menu') {
+            console.log('[GAME] Returning to menu, cleaning up...');
+            
+            // Stop bot if running
+            if (this.bot) {
+                this.bot.stop();
+                this.bot = null;
+                console.log('[GAME] Bot stopped');
+            }
+            
+            // Clear ALL game timers
+            if (this.gameTimer) {
+                clearInterval(this.gameTimer);
+                this.gameTimer = null;
+            }
+            if (this.timerInterval) {
+                clearInterval(this.timerInterval);
+                this.timerInterval = null;
+            }
+            
+            // Reset ALL game state
+            this.gameEnded = true;
+            this.isBotMode = false;
+            this.botBoard = null;
+            this.opponentCompletedBoard = false;
+            this.iCompletedBoard = false;
+            this.mineHitCount = 0;
+            this.opponentMineHitCount = 0;
+            this.score = 0;
+            this.opponentScore = 0;
+            
+            console.log('[GAME] Cleanup complete');
+        }
         
         // Show/hide top nav bar based on screen
         const topNav = document.getElementById('top-nav');
