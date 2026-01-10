@@ -6,6 +6,7 @@ const GLOBAL_BOT_ID = '00000000-0000-0000-0000-000000000001';
  * Stats API - Hem player stats hem de bot learning için
  * GET ?user_id=xxx : Player stats
  * GET ?bot_learning=true : Global bot learning verisi
+ * GET ?test=true : API test
  * POST (body: gameResult) : Bot learning güncelleme
  */
 export default async function handler(req, res) {
@@ -16,6 +17,15 @@ export default async function handler(req, res) {
 
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
+    }
+
+    // API Test endpoint
+    if (req.query.test === 'true') {
+        return res.status(200).json({
+            status: 'ok',
+            supabaseConfigured: !!supabaseAdmin,
+            timestamp: new Date().toISOString()
+        });
     }
 
     // Check if supabaseAdmin is available

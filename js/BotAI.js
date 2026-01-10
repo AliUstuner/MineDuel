@@ -10,9 +10,11 @@
  * - Kendi kararlarını verir
  * - HATA ÖĞRENME: Mayın basma ve yanlış bayrak hatalarından öğrenir
  * - PATTERN TANIMA: Benzer durumlardan kaçınır
+ * - DENEYİM KAYDI: Her oyundan detaylı veri toplar
+ * - RAKİP ANALİZİ: Oyuncunun tahtasını da izler
  * 
- * v7.0 - AKILLI HATA ÖĞRENMESİ
- * Build: 20260110-002
+ * v8.0 - BEBEK AI: Sıfırdan öğrenen, hızla gelişen AI
+ * Build: 20260110-003
  */
 
 export class BotAI {
@@ -35,6 +37,48 @@ export class BotAI {
         
         // Global öğrenme başlangıçta yüklenecek
         this.globalLearningLoaded = false;
+        
+        // ==================== DENEYİM KAYIT SİSTEMİ ====================
+        this.experience = {
+            // Bu oyundaki tüm hamleler
+            moves: [],
+            
+            // Bu oyundaki hatalar
+            mistakes: [],
+            
+            // Başarılı hamleler
+            successes: [],
+            
+            // Rakip analizi
+            opponentMoves: [],
+            
+            // Oyun istatistikleri
+            gameStats: {
+                startTime: null,
+                endTime: null,
+                totalMoves: 0,
+                safeMoves: 0,
+                mineHits: 0,
+                flagsPlaced: 0,
+                correctFlags: 0,
+                wrongFlags: 0,
+                powersUsed: [],
+                opponentScore: 0,
+                myScore: 0
+            }
+        };
+        
+        // ==================== RAKİP İZLEME SİSTEMİ ====================
+        this.opponentAnalysis = {
+            boardState: null,     // Rakibin tahta durumu
+            revealedCells: 0,
+            flaggedCells: 0,
+            scoreHistory: [],
+            movePatterns: [],
+            avgMoveTime: 0,
+            isAggressive: false,
+            preferredAreas: []    // Hangi bölgelere odaklanıyor
+        };
         
         // ==================== AKILLI BEYİN ====================
         this.brain = {
@@ -356,9 +400,14 @@ export class BotAI {
      */
     async syncToGlobal(gameResult) {
         try {
-            console.log('[GLOBAL AI] Senkronizasyon başlıyor...', {
+            // Deneyim verilerini topla
+            const experienceData = this.collectExperienceData(gameResult);
+            
+            console.log('[GLOBAL AI] 📤 Senkronizasyon başlıyor...', {
                 url: this.API_URL,
-                gameResult: gameResult
+                totalMoves: experienceData.totalMoves,
+                mistakes: experienceData.mistakeCount,
+                successes: experienceData.successCount
             });
             
             const response = await fetch(this.API_URL, {
@@ -369,11 +418,14 @@ export class BotAI {
                         botWon: gameResult.won,
                         draw: gameResult.draw,
                         playerScore: gameResult.playerScore || 0,
+                        botScore: gameResult.myScore || 0,
                         playerSpeed: this.brain?.playerState?.speed || 5,
                         gameDuration: gameResult.duration || 60000,
                         difficulty: this.difficulty,
                         strategy: this.brain?.mood || 'balanced',
-                        powersUsed: this.powers?.used || {}
+                        powersUsed: this.powers?.used || {},
+                        // YENİ: Detaylı deneyim verisi
+                        experience: experienceData
                     }
                 })
             });
@@ -383,12 +435,143 @@ export class BotAI {
             if (response.ok) {
                 const result = await response.json();
                 console.log(`[GLOBAL AI] ✅ Senkronize edildi | Toplam: ${result.totalGames} oyun | Global Win Rate: ${result.winRate}%`);
+                
+                // Başarılı senkronizasyondan sonra yerel deneyimi sıfırla
+                this.resetExperience();
             } else {
                 const errorText = await response.text();
                 console.error('[GLOBAL AI] ❌ API Hatası:', response.status, errorText);
+                
+                // Hata durumunda yerel olarak sakla
+                this.saveExperienceLocally(experienceData);
             }
         } catch (error) {
             console.error('[GLOBAL AI] ❌ Senkronizasyon başarısız:', error);
+            // Hata durumunda yerel olarak sakla
+            this.saveExperienceLocally(this.collectExperienceData(gameResult));
+        }
+    }
+    
+    /**
+     * Oyun deneyim verilerini topla
+     */
+    collectExperienceData(gameResult) {
+        return {
+            // Oyun sonucu
+            won: gameResult.won,
+            draw: gameResult.draw,
+            myScore: gameResult.myScore || this.brain.myState.score,
+            playerScore: gameResult.playerScore || 0,
+            
+            // Hamle istatistikleri
+            totalMoves: this.experience.moves.length,
+            successCount: this.experience.successes.length,
+            mistakeCount: this.experience.mistakes.length,
+            
+            // Mayın ve bayrak istatistikleri
+            minesHit: this.brain.myState.minesHit,
+            correctFlags: this.brain.myState.correctFlags,
+            wrongFlags: this.brain.myState.wrongFlagsPlaced,
+            
+            // Güç kullanımı
+            powersUsed: { ...this.powers.used },
+            
+            // Öğrenilen pattern'ler
+            learnedPatterns: this.brain.mistakes.patterns.length,
+            
+            // Strateji
+            strategy: this.brain.mood,
+            
+            // Rakip analizi
+            opponentAnalysis: {
+                avgSpeed: this.brain.playerState.speed,
+                wasAggressive: this.opponentAnalysis.isAggressive,
+                preferredAreas: this.opponentAnalysis.preferredAreas.slice(0, 5)
+            },
+            
+            // Zaman
+            duration: gameResult.duration || (Date.now() - (this.experience.gameStats.startTime || Date.now()))
+        };
+    }
+    
+    /**
+     * Deneyimi yerel olarak sakla (API başarısız olursa)
+     */
+    saveExperienceLocally(experienceData) {
+        try {
+            const STORAGE_KEY = 'mineduel_ai_experience_queue';
+            const queue = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+            queue.push({
+                ...experienceData,
+                timestamp: Date.now()
+            });
+            
+            // En fazla 50 oyun sakla
+            while (queue.length > 50) {
+                queue.shift();
+            }
+            
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
+            console.log(`[AI] 💾 Deneyim yerel olarak kaydedildi (Kuyrukta: ${queue.length} oyun)`);
+        } catch (e) {
+            console.warn('[AI] Yerel kayıt başarısız:', e);
+        }
+    }
+    
+    /**
+     * Deneyimi sıfırla (yeni oyun için)
+     */
+    resetExperience() {
+        this.experience = {
+            moves: [],
+            mistakes: [],
+            successes: [],
+            opponentMoves: [],
+            gameStats: {
+                startTime: null,
+                endTime: null,
+                totalMoves: 0,
+                safeMoves: 0,
+                mineHits: 0,
+                flagsPlaced: 0,
+                correctFlags: 0,
+                wrongFlags: 0,
+                powersUsed: [],
+                opponentScore: 0,
+                myScore: 0
+            }
+        };
+    }
+    
+    /**
+     * Hamle kaydet (her hamleden sonra çağrılır)
+     */
+    recordMove(moveData) {
+        const move = {
+            type: moveData.type,  // 'reveal', 'flag', 'unflag', 'power'
+            x: moveData.x,
+            y: moveData.y,
+            result: moveData.result,  // 'safe', 'mine', 'flag_correct', 'flag_wrong'
+            neighborState: moveData.neighborState,
+            probability: moveData.probability,
+            timestamp: Date.now(),
+            gamePhase: this.brain.gameState.phase,
+            mood: this.brain.mood,
+            scoreBefore: this.brain.myState.score
+        };
+        
+        this.experience.moves.push(move);
+        
+        // Başarılı veya hatalı olarak kategorize et
+        if (move.result === 'mine' || move.result === 'flag_wrong') {
+            this.experience.mistakes.push(move);
+        } else if (move.result === 'safe' || move.result === 'flag_correct') {
+            this.experience.successes.push(move);
+        }
+        
+        // Son 100 hamleyi tut
+        if (this.experience.moves.length > 100) {
+            this.experience.moves.shift();
         }
     }
     
@@ -543,12 +726,16 @@ export class BotAI {
         
         this.reset();
         
+        // ⭐ DENEYİM KAYDINI BAŞLAT
+        this.resetExperience();
+        this.experience.gameStats.startTime = Date.now();
+        
         // İlk hamle için tahtayı hemen analiz et
         this.initialBoardScan();
         
         const winRate = this.getWinRate();
         const bestStrat = this.getBestStrategy();
-        console.log(`[AI] Başladı | Zorluk: ${this.difficulty} | Oyunlar: ${this.learning.stats.gamesPlayed} | Kazanma: %${winRate} | En iyi strateji: ${bestStrat}`);
+        console.log(`[AI] 🚀 BEBEK AI v8 Başladı | Zorluk: ${this.difficulty} | Oyunlar: ${this.learning.stats.gamesPlayed} | Kazanma: %${winRate} | En iyi strateji: ${bestStrat}`);
         
         // Hemen düşünmeye başla - gecikmesiz
         this.scheduleThink();
@@ -556,6 +743,24 @@ export class BotAI {
         // Global learning'i arka planda yükle (ilk hamleyi geciktirmez)
         if (!this.globalLearningLoaded) {
             this.loadGlobalLearning();
+        }
+        
+        // API durumunu kontrol et (arka planda)
+        this.testAPIConnection();
+    }
+    
+    // API bağlantısını test et
+    async testAPIConnection() {
+        try {
+            const response = await fetch(`${this.API_URL}?test=true`);
+            if (response.ok) {
+                const result = await response.json();
+                console.log(`[AI] ✅ API Bağlantısı OK | Supabase: ${result.supabaseConfigured ? 'Aktif' : 'Pasif'}`);
+            } else {
+                console.warn(`[AI] ⚠️ API Hatası: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('[AI] ❌ API bağlantısı başarısız:', error.message);
         }
     }
     
@@ -615,6 +820,7 @@ export class BotAI {
         this.knowledge.probabilities.clear();
         this.knowledge.radarMines.clear();
         this.knowledge.pendingRadarMines = [];
+        this.knowledge.dangerZones = new Map();  // ⭐ Tehlikeli bölgeler
         
         this.powers.used = { freeze: 0, shield: 0, radar: 0, safeburst: 0 };
         this.powers.lastUseTime = 0;
@@ -622,7 +828,14 @@ export class BotAI {
         
         this.brain.stuckCount = 0;
         this.brain.mood = 'balanced';
-        this.brain.myState = { score: 0, progress: 0, minesHit: 0, movesThisGame: 0 };
+        this.brain.myState = { 
+            score: 0, 
+            progress: 0, 
+            minesHit: 0, 
+            movesThisGame: 0,
+            correctFlags: 0,
+            wrongFlagsPlaced: 0
+        };
         this.brain.playerState = { 
             score: 0, 
             lastScore: 0, 
@@ -632,14 +845,31 @@ export class BotAI {
             estimatedProgress: 0 
         };
         
-        // Hatalar - oyunlar arası öğrenme için KORU (sıfırlama)
+        // Rakip analizi sıfırla
+        this.opponentAnalysis = {
+            boardState: null,
+            revealedCells: 0,
+            flaggedCells: 0,
+            scoreHistory: [],
+            movePatterns: [],
+            avgMoveTime: 0,
+            isAggressive: false,
+            preferredAreas: []
+        };
+        
+        // Hatalar - oyunlar arası öğrenme için KORU (patterns'ı koru)
         if (!this.brain.mistakes) {
-            this.brain.mistakes = { mineHits: [], wrongFlags: [], missedMines: [] };
+            this.brain.mistakes = { mineHits: [], wrongFlags: [], missedMines: [], patterns: [] };
+        } else {
+            // Sadece anlık hataları sıfırla, patterns'ı koru
+            this.brain.mistakes.mineHits = [];
+            this.brain.mistakes.wrongFlags = [];
+            this.brain.mistakes.missedMines = [];
+            // patterns korunuyor - öğrenme devam ediyor!
         }
-        // recentMoves'u koru - pattern öğrenme için
-        if (!this.brain.recentMoves) {
-            this.brain.recentMoves = [];
-        }
+        
+        // recentMoves'u sıfırla - yeni oyun
+        this.brain.recentMoves = [];
         
         // Learning null ise default oluştur
         if (!this.learning || !this.learning.patterns) {
@@ -850,6 +1080,9 @@ export class BotAI {
             if (ps.isOnStreak) {
                 // Oyuncu başarılı - rakip tahtasını analiz et
                 this.analyzeOpponentBoard();
+                this.opponentAnalysis.isAggressive = true;
+            } else {
+                this.opponentAnalysis.isAggressive = false;
             }
             
             // Oyuncu skor farkını kapatıyorsa strateji değiştir
@@ -858,34 +1091,109 @@ export class BotAI {
                 // Oyuncu geliyor, savunmaya geç
                 this.brain.mood = 'defensive';
             }
+            
+            // Oyuncu davranışlarını kaydet
+            this.recordOpponentBehavior();
         } catch (error) {
             // Silent fail
+        }
+    }
+    
+    // Rakip davranışlarını kaydet
+    recordOpponentBehavior() {
+        const ps = this.brain.playerState;
+        if (!ps) return;
+        
+        // Skor geçmişini kaydet
+        this.opponentAnalysis.scoreHistory.push({
+            score: ps.score,
+            speed: ps.speed,
+            timestamp: Date.now()
+        });
+        
+        // Son 20 kaydı tut
+        if (this.opponentAnalysis.scoreHistory.length > 20) {
+            this.opponentAnalysis.scoreHistory.shift();
+        }
+        
+        // Ortalama hız hesapla
+        if (this.opponentAnalysis.scoreHistory.length > 1) {
+            const speeds = this.opponentAnalysis.scoreHistory.map(s => s.speed);
+            this.opponentAnalysis.avgMoveTime = speeds.reduce((a, b) => a + b, 0) / speeds.length;
         }
     }
     
     // Rakip tahtasını analiz et - oyuncunun açtığı güvenli bölgelerden öğren
     analyzeOpponentBoard() {
         try {
-            // Oyuncu tahtası game.playerBoard'da olabilir
+            // Oyuncu tahtası game.board'da (oyuncunun tahtası)
             const playerBoard = this.game?.board?.grid;
             if (!playerBoard) return;
             
-            // Oyuncunun açtığı büyük güvenli alanları not al
-            // Bu bilgiyi kendi stratejimizde kullanabiliriz
             let openCells = 0;
+            let flaggedCells = 0;
+            const openAreas = [];
+            
+            // Oyuncunun açtığı alanları analiz et
             for (let y = 0; y < this.gridSize; y++) {
                 for (let x = 0; x < this.gridSize; x++) {
                     const cell = playerBoard[y]?.[x];
-                    if (cell?.isRevealed && !cell.isMine) {
+                    if (!cell) continue;
+                    
+                    if (cell.isRevealed && !cell.isMine) {
                         openCells++;
+                        // Açık alanların merkezlerini bul
+                        if (cell.neighborCount === 0) {
+                            openAreas.push({ x, y });
+                        }
+                    }
+                    if (cell.isFlagged) {
+                        flaggedCells++;
                     }
                 }
             }
             
-            // Oyuncu bizden çok hücre açtıysa, daha hızlı oynamalıyız
-            if (openCells > this.brain.myState.progress * 0.8) {
-                this.brain.mood = 'aggressive';
+            // Rakip analizi güncelle
+            this.opponentAnalysis.revealedCells = openCells;
+            this.opponentAnalysis.flaggedCells = flaggedCells;
+            
+            // Oyuncu hangi bölgelere odaklanıyor?
+            if (openAreas.length > 0) {
+                // En yoğun bölgeyi bul
+                const centerX = openAreas.reduce((sum, p) => sum + p.x, 0) / openAreas.length;
+                const centerY = openAreas.reduce((sum, p) => sum + p.y, 0) / openAreas.length;
+                
+                this.opponentAnalysis.preferredAreas.push({
+                    centerX: Math.round(centerX),
+                    centerY: Math.round(centerY),
+                    cellCount: openCells,
+                    timestamp: Date.now()
+                });
+                
+                // Son 5 kaydı tut
+                if (this.opponentAnalysis.preferredAreas.length > 5) {
+                    this.opponentAnalysis.preferredAreas.shift();
+                }
             }
+            
+            // Oyuncu bizden çok hücre açtıysa, daha hızlı oynamalıyız
+            const myProgress = this.calculateMyProgress();
+            const opponentProgress = (openCells / ((this.gridSize * this.gridSize) - (this.game?.mineCount || 15))) * 100;
+            
+            if (opponentProgress > myProgress * 1.2) {
+                // Oyuncu %20 daha ileri, agresif ol
+                this.brain.mood = 'aggressive';
+                console.log(`[AI] ⚡ Rakip önde! (${opponentProgress.toFixed(0)}% vs ${myProgress.toFixed(0)}%) - Agresif moda geçiliyor`);
+            }
+            
+            // Deneyim olarak kaydet
+            this.experience.opponentMoves.push({
+                openCells,
+                flaggedCells,
+                progress: opponentProgress,
+                timestamp: Date.now()
+            });
+            
         } catch (error) {
             // Silent fail
         }
@@ -1724,8 +2032,11 @@ export class BotAI {
         }
     }
     
-    // Hamleyi kaydet - pattern öğrenme için
+    // Hamleyi kaydet - pattern öğrenme ve deneyim kaydı için
     recordMove(action, result = null) {
+        const neighborState = this.getNeighborState(action.x, action.y);
+        const probability = this.knowledge.probabilities.get(`${action.x},${action.y}`) || 0.5;
+        
         const move = {
             x: action.x,
             y: action.y,
@@ -1733,14 +2044,53 @@ export class BotAI {
             reason: action.reason,
             timestamp: Date.now(),
             success: result ? !result.hitMine : true,
-            neighborState: this.getNeighborState(action.x, action.y)
+            neighborState,
+            probability,
+            gamePhase: this.brain.gameState.phase,
+            mood: this.brain.mood,
+            scoreBefore: this.brain.myState.score
         };
         
+        // Brain'e kaydet (pattern öğrenme)
         this.brain.recentMoves.push(move);
-        
-        // Son 50 hamleyi tut
         if (this.brain.recentMoves.length > 50) {
             this.brain.recentMoves.shift();
+        }
+        
+        // ⭐ DENEYİM SİSTEMİNE KAYDET
+        this.experience.moves.push(move);
+        
+        // Sonuca göre kategorize et
+        if (result?.hitMine) {
+            move.result = 'mine';
+            this.experience.mistakes.push(move);
+            this.experience.gameStats.mineHits++;
+        } else if (action.type === 'flag') {
+            // Bayrak doğru mu kontrol et
+            const cell = this.board?.grid?.[action.y]?.[action.x];
+            if (cell?.isMine) {
+                move.result = 'flag_correct';
+                this.experience.successes.push(move);
+                this.experience.gameStats.correctFlags++;
+                this.brain.myState.correctFlags++;
+            } else {
+                move.result = 'flag_wrong';
+                this.experience.mistakes.push(move);
+                this.experience.gameStats.wrongFlags++;
+                this.brain.myState.wrongFlagsPlaced++;
+            }
+            this.experience.gameStats.flagsPlaced++;
+        } else if (action.type === 'reveal' && !result?.hitMine) {
+            move.result = 'safe';
+            this.experience.successes.push(move);
+            this.experience.gameStats.safeMoves++;
+        }
+        
+        this.experience.gameStats.totalMoves++;
+        
+        // Son 100 hamleyi tut
+        if (this.experience.moves.length > 100) {
+            this.experience.moves.shift();
         }
     }
     
