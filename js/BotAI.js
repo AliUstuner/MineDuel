@@ -678,48 +678,57 @@ export class BotAI {
     // ==================== 2. OYUNCU İZLEME ====================
     
     watchPlayer() {
-        if (Math.random() > this.config.playerWatchRate) return;
-        
-        const ps = this.brain.playerState;
-        const currentScore = this.game?.score || 0;
-        
-        // Skor değişimi
-        if (currentScore !== ps.lastScore) {
-            const now = Date.now();
-            ps.scoreHistory.push({ score: currentScore, time: now });
+        try {
+            if (Math.random() > this.config.playerWatchRate) return;
             
-            // Son 10 kaydı tut
-            if (ps.scoreHistory.length > 10) {
-                ps.scoreHistory.shift();
+            const ps = this.brain.playerState;
+            if (!ps) return;
+            
+            const currentScore = this.game?.score || 0;
+            
+            // Skor değişimi
+            if (currentScore !== ps.lastScore) {
+                const now = Date.now();
+                if (!ps.scoreHistory) ps.scoreHistory = [];
+                ps.scoreHistory.push({ score: currentScore, time: now });
+                
+                // Son 10 kaydı tut
+                if (ps.scoreHistory.length > 10) {
+                    ps.scoreHistory.shift();
+                }
+                
+                // Hız hesapla
+                if (ps.scoreHistory.length >= 2) {
+                    const first = ps.scoreHistory[0];
+                    const last = ps.scoreHistory[ps.scoreHistory.length - 1];
+                    const timeDiff = (last.time - first.time) / 1000;
+                    const scoreDiff = last.score - first.score;
+                    ps.speed = timeDiff > 0 ? scoreDiff / timeDiff : 0;
+                }
+                
+                // Streak kontrolü
+                const recentGain = currentScore - ps.lastScore;
+                ps.isOnStreak = recentGain > 20;
+                
+                ps.lastScore = currentScore;
             }
             
-            // Hız hesapla
-            if (ps.scoreHistory.length >= 2) {
-                const first = ps.scoreHistory[0];
-                const last = ps.scoreHistory[ps.scoreHistory.length - 1];
-                const timeDiff = (last.time - first.time) / 1000;
-                const scoreDiff = last.score - first.score;
-                ps.speed = timeDiff > 0 ? scoreDiff / timeDiff : 0;
+            // Tahmini ilerleme
+            const avgPointsPerCell = 5;
+            const estimatedCells = currentScore / avgPointsPerCell;
+            const mineCount = this.game?.mineCount || 15;
+            const totalSafe = (this.gridSize * this.gridSize) - mineCount;
+            ps.estimatedProgress = Math.min(100, (estimatedCells / totalSafe) * 100);
+            
+            // Öğrenme: Oyuncu kalıplarını kaydet
+            if (ps.speed > 0 && this.learning?.patterns) {
+                const pat = this.learning.patterns;
+                if (typeof pat.avgPlayerSpeed === 'number') {
+                    pat.avgPlayerSpeed = (pat.avgPlayerSpeed * 0.9) + (ps.speed * 0.1);
+                }
             }
-            
-            // Streak kontrolü
-            const recentGain = currentScore - ps.lastScore;
-            ps.isOnStreak = recentGain > 20;
-            
-            ps.lastScore = currentScore;
-        }
-        
-        // Tahmini ilerleme
-        const avgPointsPerCell = 5;
-        const estimatedCells = currentScore / avgPointsPerCell;
-        const mineCount = this.game?.mineCount || 15;
-        const totalSafe = (this.gridSize * this.gridSize) - mineCount;
-        ps.estimatedProgress = Math.min(100, (estimatedCells / totalSafe) * 100);
-        
-        // Öğrenme: Oyuncu kalıplarını kaydet
-        if (ps.speed > 0 && this.learning?.patterns) {
-            const l = this.learning.patterns;
-            l.avgPlayerSpeed = (l.avgPlayerSpeed * 0.9) + (ps.speed * 0.1);
+        } catch (error) {
+            console.warn('[AI] watchPlayer error:', error);
         }
     }
     
