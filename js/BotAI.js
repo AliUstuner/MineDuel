@@ -403,8 +403,12 @@ export class BotAI {
             // Deneyim verilerini topla
             const experienceData = this.collectExperienceData(gameResult);
             
-            console.log('[GLOBAL AI] 📤 Senkronizasyon başlıyor...', {
+            console.log('%c╔══════════════════════════════════════════════════════════╗', 'color: #00ff00; font-weight: bold;');
+            console.log('%c║  🤖 GLOBAL AI - DENEYIM SENKRONIZASYONU BAŞLIYOR...      ║', 'color: #00ff00; font-weight: bold;');
+            console.log('%c╚══════════════════════════════════════════════════════════╝', 'color: #00ff00; font-weight: bold;');
+            console.log('[GLOBAL AI] 📤 Gönderilen veri:', {
                 url: this.API_URL,
+                won: gameResult.won,
                 totalMoves: experienceData.totalMoves,
                 mistakes: experienceData.mistakeCount,
                 successes: experienceData.successCount
@@ -434,19 +438,28 @@ export class BotAI {
             
             if (response.ok) {
                 const result = await response.json();
-                console.log(`[GLOBAL AI] ✅ Senkronize edildi | Toplam: ${result.totalGames} oyun | Global Win Rate: ${result.winRate}%`);
+                console.log('%c╔══════════════════════════════════════════════════════════╗', 'color: #00ff00; font-weight: bold;');
+                console.log('%c║  ✅ DENEYIM BAŞARIYLA KAYDEDİLDİ!                        ║', 'color: #00ff00; font-weight: bold;');
+                console.log(`%c║  📊 Toplam Oyun: ${String(result.totalGames).padEnd(6)} | Win Rate: ${String(result.winRate + '%').padEnd(7)}        ║`, 'color: #00ff00; font-weight: bold;');
+                console.log('%c╚══════════════════════════════════════════════════════════╝', 'color: #00ff00; font-weight: bold;');
                 
                 // Başarılı senkronizasyondan sonra yerel deneyimi sıfırla
                 this.resetExperience();
             } else {
                 const errorText = await response.text();
-                console.error('[GLOBAL AI] ❌ API Hatası:', response.status, errorText);
+                console.log('%c╔══════════════════════════════════════════════════════════╗', 'color: #ff0000; font-weight: bold;');
+                console.log('%c║  ❌ API HATASI - YEREL KAYIT YAPILIYOR                   ║', 'color: #ff0000; font-weight: bold;');
+                console.log('%c╚══════════════════════════════════════════════════════════╝', 'color: #ff0000; font-weight: bold;');
+                console.error('[GLOBAL AI] Hata:', response.status, errorText);
                 
                 // Hata durumunda yerel olarak sakla
                 this.saveExperienceLocally(experienceData);
             }
         } catch (error) {
-            console.error('[GLOBAL AI] ❌ Senkronizasyon başarısız:', error);
+            console.log('%c╔══════════════════════════════════════════════════════════╗', 'color: #ff0000; font-weight: bold;');
+            console.log('%c║  ❌ BAĞLANTI HATASI - YEREL KAYIT YAPILIYOR              ║', 'color: #ff0000; font-weight: bold;');
+            console.log('%c╚══════════════════════════════════════════════════════════╝', 'color: #ff0000; font-weight: bold;');
+            console.error('[GLOBAL AI] Senkronizasyon başarısız:', error);
             // Hata durumunda yerel olarak sakla
             this.saveExperienceLocally(this.collectExperienceData(gameResult));
         }

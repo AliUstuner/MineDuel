@@ -78,6 +78,64 @@ export default async function handler(req, res) {
         }
     }
 
+    // 📊 DASHBOARD ENDPOINT - Detaylı bot öğrenme durumu
+    if (req.query.dashboard === 'true') {
+        try {
+            if (!supabaseAdmin) {
+                return res.status(200).json({ error: 'Database not connected' });
+            }
+
+            const { data, error } = await supabaseAdmin
+                .from('bot_learning_global')
+                .select('*')
+                .eq('id', GLOBAL_BOT_ID)
+                .single();
+
+            if (error || !data) {
+                return res.status(200).json({
+                    status: 'no_data',
+                    message: 'Bot henüz hiç oyun oynamadı',
+                    totalGames: 0
+                });
+            }
+
+            const winRate = data.total_games > 0 
+                ? ((data.total_wins / data.total_games) * 100).toFixed(1) 
+                : 0;
+
+            return res.status(200).json({
+                status: 'ok',
+                message: '🤖 GLOBAL AI DASHBOARD',
+                lastUpdate: data.updated_at,
+                stats: {
+                    '🎮 Toplam Oyun': data.total_games,
+                    '✅ Kazanma': data.total_wins,
+                    '❌ Kaybetme': data.total_losses,
+                    '🤝 Beraberlik': data.total_draws,
+                    '📈 Kazanma Oranı': winRate + '%'
+                },
+                powers: {
+                    '❄️ Freeze': `${data.freeze_uses || 0} kullanım`,
+                    '🛡️ Shield': `${data.shield_uses || 0} kullanım`,
+                    '📡 Radar': `${data.radar_uses || 0} kullanım`,
+                    '💥 SafeBurst': `${data.safeburst_uses || 0} kullanım`
+                },
+                strategies: {
+                    '⚔️ Agresif': `${data.aggressive_games || 0} oyun, %${((data.aggressive_rate || 0) * 100).toFixed(0)} başarı`,
+                    '🛡️ Defansif': `${data.defensive_games || 0} oyun, %${((data.defensive_rate || 0) * 100).toFixed(0)} başarı`,
+                    '⚖️ Dengeli': `${data.balanced_games || 0} oyun, %${((data.balanced_rate || 0) * 100).toFixed(0)} başarı`
+                },
+                patterns: {
+                    '👤 Ortalama Oyuncu Skoru': Math.round(data.avg_player_score || 0),
+                    '⚡ Ortalama Oyuncu Hızı': (data.avg_player_speed || 0).toFixed(2),
+                    '⏱️ Ortalama Oyun Süresi': Math.round((data.avg_game_duration || 0) / 1000) + ' saniye'
+                }
+            });
+        } catch (e) {
+            return res.status(200).json({ error: e.message });
+        }
+    }
+
     // Check if supabaseAdmin is available
     if (!supabaseAdmin) {
         console.error('[STATS API] supabaseAdmin is null - missing env variables');
