@@ -87,17 +87,22 @@ async function getPlayerStats(req, res) {
 
 // ==================== BOT LEARNING - GET ====================
 async function getBotLearning(req, res) {
-    const { data, error } = await supabaseAdmin
-        .from('bot_learning_global')
-        .select('*')
-        .eq('id', GLOBAL_BOT_ID)
-        .single();
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('bot_learning_global')
+            .select('*')
+            .eq('id', GLOBAL_BOT_ID)
+            .single();
 
-    if (error || !data) {
-        return res.status(200).json({
-            version: 1,
-            stats: { gamesPlayed: 0, wins: 0, losses: 0, draws: 0 },
-            powers: {
+        if (error) {
+            console.error('[BOT LEARNING GET] Error:', error);
+        }
+
+        if (error || !data) {
+            return res.status(200).json({
+                version: 1,
+                stats: { gamesPlayed: 0, wins: 0, losses: 0, draws: 0 },
+                powers: {
                 freeze: { used: 0, wonAfter: 0, effectiveness: 0.5 },
                 shield: { used: 0, savedMines: 0, effectiveness: 0.5 },
                 radar: { used: 0, minesFound: 0, effectiveness: 0.5 },
@@ -141,13 +146,18 @@ async function getBotLearning(req, res) {
             avgGameDuration: data.avg_game_duration || 60000
         }
     });
+    } catch (error) {
+        console.error('[BOT LEARNING GET] Exception:', error);
+        return res.status(500).json({ error: 'Failed to get bot learning data', details: error.message });
+    }
 }
 
 // ==================== BOT LEARNING - UPDATE ====================
 async function updateBotLearning(req, res) {
-    const { gameResult } = req.body;
+    try {
+        const { gameResult } = req.body;
 
-    if (!gameResult) {
+        if (!gameResult) {
         return res.status(400).json({ error: 'gameResult required' });
     }
 
@@ -230,7 +240,7 @@ async function updateBotLearning(req, res) {
 
     if (updateError) {
         console.error('[BOT LEARNING] Update error:', updateError);
-        return res.status(500).json({ error: 'Failed to update' });
+        return res.status(500).json({ error: 'Failed to update', details: updateError.message });
     }
 
     console.log(`[BOT LEARNING] Games: ${updates.total_games}, Win Rate: ${((updates.total_wins || current.total_wins || 0) / updates.total_games * 100).toFixed(1)}%`);
@@ -240,4 +250,8 @@ async function updateBotLearning(req, res) {
         totalGames: updates.total_games,
         winRate: ((updates.total_wins || current.total_wins || 0) / updates.total_games * 100).toFixed(1)
     });
+    } catch (error) {
+        console.error('[BOT LEARNING UPDATE] Exception:', error);
+        return res.status(500).json({ error: 'Failed to update bot learning', details: error.message });
+    }
 }
