@@ -472,7 +472,6 @@ export class BotAI {
         
         console.log(`[GLOBAL AI] Öğrenme güncellendi | Kazanma: %${this.calculateWinRate(l)} | En iyi strateji: ${this.getBestStrategy()}`);
     }
-    }
     
     // En iyi stratejiyi öğrenmeden al
     getBestStrategy() {
