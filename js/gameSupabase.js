@@ -1692,11 +1692,13 @@ class GameClient {
             x: cell.x,
             y: cell.y,
             result: hitMine ? 'mine' : (revealed.length > 1 ? 'cascade' : 'safe'),
-            cellValue: hitMine ? 'mine' : (this.playerBoard.grid[cell.y][cell.x].neighborCount || 0),
+            cellValue: hitMine ? -1 : (this.playerBoard.grid[cell.y][cell.x].neighborCount || 0),
             cellsRevealed: revealed.length,
+            scoreBefore: this.score - points,
             scoreChange: points,
             currentScore: this.score,
             opponentScore: this.opponentScore,
+            wasKnownSafe: false, // İnsan için bilinmiyor
             includeSnapshot: true,
             board: this.playerBoard
         });
@@ -2429,12 +2431,16 @@ class GameClient {
             x: x,
             y: y,
             result: hitMine ? 'mine' : (revealed.length > 1 ? 'cascade' : 'safe'),
-            cellValue: hitMine ? 'mine' : (this.botBoard.grid[y][x].neighborCount || 0),
+            cellValue: hitMine ? -1 : (this.botBoard.grid[y][x].neighborCount || 0),
             cellsRevealed: revealed.length,
+            scoreBefore: this.opponentScore - points,
             scoreChange: points,
             currentScore: this.opponentScore,
             opponentScore: this.score,
-            includeSnapshot: false  // Bot hamlelerinde snapshot almıyoruz (performans)
+            // Bot'un karar bilgisi
+            wasKnownSafe: this.bot?.knowledge?.safeCells?.has(`${x},${y}`) || false,
+            includeSnapshot: revealed.length > 3 || hitMine, // Önemli anlarda snapshot
+            board: this.botBoard
         });
         
         if (hitMine) {
@@ -2651,7 +2657,14 @@ class GameClient {
             cost: cost,
             scoreBefore: scoreBefore,
             scoreAfter: this.opponentScore,
-            opponentScore: this.score
+            opponentScore: this.score,
+            // Bot'un güç kullanım nedeni
+            reason: this.bot?.powers?.scores?.[power] ? 
+                `Score: ${this.bot.powers.scores[power]} | Mood: ${this.bot?.brain?.mood}` : null,
+            // Ek efekt bilgisi
+            effect: power === 'radar' ? { minesFound: 3 } : 
+                   power === 'safeburst' ? { cellsRevealed: 3 } : null,
+            board: this.botBoard
         });
         
         return true;

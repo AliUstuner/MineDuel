@@ -604,4 +604,33 @@ export function generateMinesFromSeed(seed, gridSize, mineCount, safeX = -1, saf
     return mines;
 }
 
+// ==================== TRAINING DATA API ====================
+
+export async function getTrainingStats() {
+    try {
+        const response = await fetch('/api/training');
+        if (response.ok) {
+            return await response.json();
+        }
+        return null;
+    } catch (e) {
+        console.warn('[SUPABASE] Training stats unavailable');
+        return null;
+    }
+}
+
+export async function saveTrainingData(gameData) {
+    try {
+        const response = await fetch('/api/training', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(gameData)
+        });
+        return response.ok;
+    } catch (e) {
+        console.warn('[SUPABASE] Training save failed');
+        return false;
+    }
+}
+
 export default supabase;
