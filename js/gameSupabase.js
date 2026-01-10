@@ -1077,6 +1077,7 @@ class GameClient {
         
         // Reset bot-related state
         this.opponentCompletedBoard = false;
+        this.playerCompletedBoard = false;  // YENİ: Oyuncu tamamladı mı?
         this.botBoard = null;
         this.opponentMineHitCount = 0;
         
@@ -1290,6 +1291,7 @@ class GameClient {
         this.gameEnded = false;
         this.iCompletedBoard = false;
         this.opponentCompletedBoard = false;
+        this.playerCompletedBoard = false;  // YENİ
         
         // Track mine hits (max 3 allowed to win)
         this.mineHitCount = 0;
@@ -1739,37 +1741,49 @@ class GameClient {
         this.checkPlayerWinCondition();
     }
     
-    // Check if player wins - 3 or fewer mine hits AND board completed
+    // Check if player wins - board completed
     checkPlayerWinCondition() {
         if (this.gameEnded) return;
         
         // Check if board is completed (all safe cells revealed)
         if (this.playerBoard.checkBoardCompleted()) {
             console.log('[WIN] Player completed board!');
+            this.playerCompletedBoard = true;
             
-            // Player can only win instantly if 3 or fewer mine hits AND higher score
-            if (this.mineHitCount <= 3) {
-                // In bot mode, check scores
-                if (this.isBotMode) {
-                    if (this.score > this.opponentScore) {
-                        console.log('[WIN] Player wins with higher score:', this.score, 'vs', this.opponentScore);
-                        this.showNotification('🎉 Tahtayı tamamladın!', 'success');
-                        this.endGame(true);
-                    } else {
-                        console.log('[WIN] Player completed but bot has higher score - waiting');
-                        this.showNotification('Tahtayı tamamladın! En yüksek skor kazanır.', 'info');
-                    }
+            // Bildirim göster
+            this.showNotification('🎉 Tahtayı tamamladın!', 'success');
+            
+            // Bot modunda
+            if (this.isBotMode) {
+                // Eğer bot da tahtayı tamamladıysa, karşılaştır ve bitir
+                if (this.opponentCompletedBoard) {
+                    console.log('[WIN] Her iki tahta da tamamlandı - skorları karşılaştır');
+                    this.compareAndEndGame();
                 } else {
-                    // Online mode - instant win
-                    console.log('[WIN] Player wins with', this.mineHitCount, 'mine hits');
-                    this.showNotification('🎉 Tahtayı tamamladın!', 'success');
-                    this.endGame(true);
+                    // Bot henüz tamamlamadı
+                    // 3 veya daha az mayına bastıysa ve skoru yüksekse ANINDA KAZAN
+                    if (this.mineHitCount <= 3 && this.score > this.opponentScore) {
+                        console.log('[WIN] Player wins instantly with', this.mineHitCount, 'mine hits and higher score');
+                        this.endGame(true);
+                    } else if (this.mineHitCount <= 3) {
+                        // Skor düşük ama 3 veya az mayın - bot bitmesini bekle
+                        console.log('[WIN] Player completed but waiting for bot or timer');
+                        this.showNotification('Tahtayı tamamladın! Bot bitmesini veya süreyi bekle.', 'info');
+                    } else {
+                        // 3'ten fazla mayına bastı - süreyi bekle
+                        console.log('[WIN] Player completed but hit', this.mineHitCount, 'mines - waiting for timer');
+                        this.showNotification('Tahtayı tamamladın! 3\'ten fazla mayına bastın, süre sonuna kadar bekle.', 'info');
+                    }
                 }
             } else {
-                console.log('[WIN] Player completed board but hit', this.mineHitCount, 'mines - waiting for timer');
-                // Player completed board but hit >3 mines
-                // Wait for timer, highest score wins
-                this.showNotification('Tahtayı tamamladın! En yüksek skor kazanır.', 'info');
+                // Online mode - tamamlayan ANINDA kazanır (3 veya az mayınla)
+                if (this.mineHitCount <= 3) {
+                    console.log('[WIN] Player wins online with', this.mineHitCount, 'mine hits');
+                    this.endGame(true);
+                } else {
+                    console.log('[WIN] Player completed but hit', this.mineHitCount, 'mines - waiting');
+                    this.showNotification('Tahtayı tamamladın! En yüksek skor kazanır.', 'info');
+                }
             }
         }
     }
@@ -2500,7 +2514,8 @@ class GameClient {
         return true;
     }
     
-    // Bot tahtayı tamamladığında oyunu bitir - EN YÜKSEK PUAN KAZANIR
+    // Bot tahtayı tamamladığında - OYUN HEMEN BİTMEZ!
+    // Oyuncu oynamaya devam eder veya süre biter
     checkBotWinCondition() {
         if (this.gameEnded) return;
         
@@ -2509,26 +2524,47 @@ class GameClient {
             console.log('[BOT] Bot tahtayı tamamladı!');
             console.log('[BOT] Bot skor:', this.opponentScore, 'Oyuncu skor:', this.score);
             
-            // Stop bot immediately when board is completed
-            this.bot?.stop();
+            // Bot tahtayı tamamladı olarak işaretle
             this.opponentCompletedBoard = true;
             
-            // Oyunu hemen bitir - en yüksek puan kazanır
-            const botWins = this.opponentScore > this.score;
-            const isDraw = this.opponentScore === this.score;
+            // Bot'u durdur - ama oyun devam ediyor!
+            this.bot?.stop();
             
-            if (isDraw) {
-                this.showNotification('🤖 Bot tahtayı tamamladı! Berabere!', 'warning');
-            } else if (botWins) {
-                this.showNotification('🤖 Bot tahtayı tamamladı ve kazandı!', 'error');
-            } else {
-                this.showNotification('🤖 Bot tahtayı tamamladı ama puanın daha yüksek!', 'success');
+            // Bildirim göster - OYUN BİTMEDİ!
+            this.showNotification('🤖 Bot tahtayı tamamladı! Sen oynamaya devam et veya süreyi bekle.', 'warning');
+            
+            // OYUN BİTMEZ! Oyuncu oynamaya devam eder
+            // Oyun ancak şu durumlarda biter:
+            // 1. Süre biterse
+            // 2. Oyuncu da tahtayı tamamlarsa
+            
+            // Eğer oyuncu da tahtayı tamamladıysa, o zaman karşılaştır
+            if (this.playerBoard && this.playerBoard.checkBoardCompleted()) {
+                console.log('[WIN] Her iki tahta da tamamlandı - skorları karşılaştır');
+                this.compareAndEndGame();
             }
-            
-            setTimeout(() => {
-                this.endGame(false); // false = oyuncu tahtayı tamamlamadı
-            }, 500);
+            // Aksi halde oyuncu oynamaya devam eder, süre bitene kadar
         }
+    }
+    
+    // İki taraf da tamamladığında veya süre bittiğinde
+    compareAndEndGame() {
+        if (this.gameEnded) return;
+        
+        const botWins = this.opponentScore > this.score;
+        const isDraw = this.opponentScore === this.score;
+        
+        if (isDraw) {
+            this.showNotification('🤝 Berabere!', 'warning');
+        } else if (botWins) {
+            this.showNotification('🤖 Bot kazandı!', 'error');
+        } else {
+            this.showNotification('🎉 Sen kazandın!', 'success');
+        }
+        
+        setTimeout(() => {
+            this.endGame(!botWins && !isDraw);
+        }, 500);
     }
     
     useBotPower(power, cost) {
