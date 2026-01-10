@@ -69,32 +69,8 @@ export class BotAI {
         };
         
         // ==================== RAKİP İZLEME SİSTEMİ ====================
-        this.opponentAnalysis = {
-            boardState: null,     // Rakibin tahta durumu
-            revealedCells: 0,
-            flaggedCells: 0,
-            scoreHistory: [],
-            movePatterns: [],
-            avgMoveTime: 0,
-            isAggressive: false,
-            preferredAreas: [],    // Hangi bölgelere odaklanıyor
-            
-            // YENİ: Detaylı oyuncu takibi
-            lastMoveTime: Date.now(),
-            moveTimes: [],           // Hamle süreleri
-            consecutiveSafes: 0,     // Art arda güvenli hamleler
-            consecutiveMines: 0,     // Art arda mayınlar
-            cascadeCount: 0,         // Cascade sayısı (iyi oyuncu göstergesi)
-            cornerPreference: 0,     // Köşelerden başlama tercihi
-            edgePreference: 0,       // Kenarlardan başlama tercihi
-            centerPreference: 0,     // Merkezden başlama tercihi
-            flagAccuracy: 0,         // Bayrak doğruluğu
-            totalFlags: 0,
-            correctFlags: 0,
-            riskTolerance: 0.5,      // Ne kadar riskli oynuyor
-            skillLevel: 'unknown',   // beginner, intermediate, advanced, expert
-            learnedPatterns: []      // Oyuncudan öğrenilen pattern'ler
-        };
+        // initOpponentAnalysis() ile doldurulacak
+        this.opponentAnalysis = null;
         
         // ==================== AKILLI BEYİN ====================
         this.brain = {
@@ -179,7 +155,39 @@ export class BotAI {
         // Sonra global veriyi async yükle (Supabase'den)
         this.loadGlobalLearning();
         
+        // Opponent analysis'i initialize et
+        this.initOpponentAnalysis();
+        
         console.log(`[AI] ${difficulty.toUpperCase()} | Win Rate: ${this.getWinRate()}% | GLOBAL AI v7`);
+    }
+    
+    // ==================== OPPONENT ANALYSIS INIT ====================
+    
+    initOpponentAnalysis() {
+        this.opponentAnalysis = {
+            boardState: null,
+            revealedCells: 0,
+            flaggedCells: 0,
+            scoreHistory: [],
+            movePatterns: [],
+            avgMoveTime: 0,
+            isAggressive: false,
+            preferredAreas: [],
+            lastMoveTime: Date.now(),
+            moveTimes: [],
+            consecutiveSafes: 0,
+            consecutiveMines: 0,
+            cascadeCount: 0,
+            cornerPreference: 0,
+            edgePreference: 0,
+            centerPreference: 0,
+            flagAccuracy: 0,
+            totalFlags: 0,
+            correctFlags: 0,
+            riskTolerance: 0.5,
+            skillLevel: 'unknown',
+            learnedPatterns: []
+        };
     }
     
     // ==================== ZORLUK AYARLARI ====================
@@ -624,11 +632,23 @@ export class BotAI {
      * Bu fonksiyon gameSupabase.js'den her oyuncu hamlesinde çağrılır
      */
     watchPlayerMove(moveData) {
+        // Null check - opponentAnalysis yoksa oluştur
+        if (!this.opponentAnalysis) {
+            this.initOpponentAnalysis();
+        }
+        
         const now = Date.now();
         const oa = this.opponentAnalysis;
         
+        // Gerekli array'ler yoksa oluştur
+        if (!oa.moveTimes) oa.moveTimes = [];
+        if (!oa.movePatterns) oa.movePatterns = [];
+        if (!oa.scoreHistory) oa.scoreHistory = [];
+        if (!oa.preferredAreas) oa.preferredAreas = [];
+        if (!oa.learnedPatterns) oa.learnedPatterns = [];
+        
         // Hamle süresini hesapla
-        const moveTime = now - oa.lastMoveTime;
+        const moveTime = now - (oa.lastMoveTime || now);
         oa.lastMoveTime = now;
         oa.moveTimes.push(moveTime);
         
@@ -708,20 +728,24 @@ export class BotAI {
      * Oyuncunun pozisyon tercihlerini analiz et
      */
     analyzePositionPreference(x, y) {
+        if (!this.opponentAnalysis) return;
         const oa = this.opponentAnalysis;
-        const gridSize = this.gridSize;
+        const gridSize = this.gridSize || 10;
+        
+        // Array'ler yoksa oluştur
+        if (!oa.preferredAreas) oa.preferredAreas = [];
         
         // Köşe kontrolü
         if ((x === 0 || x === gridSize - 1) && (y === 0 || y === gridSize - 1)) {
-            oa.cornerPreference++;
+            oa.cornerPreference = (oa.cornerPreference || 0) + 1;
         }
         // Kenar kontrolü
         else if (x === 0 || x === gridSize - 1 || y === 0 || y === gridSize - 1) {
-            oa.edgePreference++;
+            oa.edgePreference = (oa.edgePreference || 0) + 1;
         }
         // Merkez kontrolü
         else if (x > 2 && x < gridSize - 3 && y > 2 && y < gridSize - 3) {
-            oa.centerPreference++;
+            oa.centerPreference = (oa.centerPreference || 0) + 1;
         }
         
         // Tercih edilen alanları güncelle
@@ -736,21 +760,22 @@ export class BotAI {
      * Oyuncunun agresifliğini analiz et
      */
     analyzePlayerAggression() {
+        if (!this.opponentAnalysis) return;
         const oa = this.opponentAnalysis;
         
         // Hızlı oyuncu = agresif
-        const isQuick = oa.avgMoveTime < 1500;
+        const isQuick = (oa.avgMoveTime || 2000) < 1500;
         
         // Çok cascade yapan = iyi
-        const hasCascades = oa.cascadeCount > 3;
+        const hasCascades = (oa.cascadeCount || 0) > 3;
         
         // Risk alan (mayına çok basan) = agresif
-        const takesRisks = oa.consecutiveMines > 0;
+        const takesRisks = (oa.consecutiveMines || 0) > 0;
         
         oa.isAggressive = isQuick || takesRisks;
         
         // Risk toleransını hesapla
-        const totalMoves = oa.movePatterns.length;
+        const totalMoves = (oa.movePatterns || []).length;
         if (totalMoves > 5) {
             const mineMoves = oa.movePatterns.filter(m => m.result === 'mine').length;
             oa.riskTolerance = mineMoves / totalMoves;
@@ -761,8 +786,10 @@ export class BotAI {
      * Oyuncunun beceri seviyesini değerlendir
      */
     evaluatePlayerSkill() {
+        if (!this.opponentAnalysis) return;
         const oa = this.opponentAnalysis;
-        const totalMoves = oa.movePatterns.length;
+        const movePatterns = oa.movePatterns || [];
+        const totalMoves = movePatterns.length;
         
         if (totalMoves < 5) {
             oa.skillLevel = 'unknown';
@@ -773,31 +800,36 @@ export class BotAI {
         let skillScore = 50;
         
         // Hız (hızlı = iyi)
-        if (oa.avgMoveTime < 1000) skillScore += 15;
-        else if (oa.avgMoveTime < 2000) skillScore += 10;
-        else if (oa.avgMoveTime > 4000) skillScore -= 10;
+        const avgMoveTime = oa.avgMoveTime || 2000;
+        if (avgMoveTime < 1000) skillScore += 15;
+        else if (avgMoveTime < 2000) skillScore += 10;
+        else if (avgMoveTime > 4000) skillScore -= 10;
         
         // Cascade oranı (yüksek = iyi)
-        const cascadeRate = oa.cascadeCount / Math.max(1, totalMoves);
+        const cascadeRate = (oa.cascadeCount || 0) / Math.max(1, totalMoves);
         if (cascadeRate > 0.3) skillScore += 15;
         else if (cascadeRate > 0.15) skillScore += 10;
         
         // Mayın oranı (düşük = iyi)
-        const mineRate = oa.movePatterns.filter(m => m.result === 'mine').length / totalMoves;
+        const mineRate = movePatterns.filter(m => m.result === 'mine').length / totalMoves;
         if (mineRate < 0.1) skillScore += 15;
         else if (mineRate < 0.2) skillScore += 5;
         else if (mineRate > 0.3) skillScore -= 15;
         
         // Bayrak doğruluğu
-        if (oa.flagAccuracy > 0.8) skillScore += 10;
-        else if (oa.flagAccuracy < 0.3 && oa.totalFlags > 3) skillScore -= 10;
+        const flagAccuracy = oa.flagAccuracy || 0;
+        if (flagAccuracy > 0.8) skillScore += 10;
+        else if (flagAccuracy < 0.3 && (oa.totalFlags || 0) > 3) skillScore -= 10;
         
         // Skor artış hızı
-        if (oa.scoreHistory.length > 5) {
-            const recentScores = oa.scoreHistory.slice(-5);
-            const scoreGrowth = (recentScores[4].score - recentScores[0].score) / 5;
-            if (scoreGrowth > 30) skillScore += 10;
-            else if (scoreGrowth > 15) skillScore += 5;
+        const scoreHistory = oa.scoreHistory || [];
+        if (scoreHistory.length > 5) {
+            const recentScores = scoreHistory.slice(-5);
+            if (recentScores[4] && recentScores[0]) {
+                const scoreGrowth = (recentScores[4].score - recentScores[0].score) / 5;
+                if (scoreGrowth > 30) skillScore += 10;
+                else if (scoreGrowth > 15) skillScore += 5;
+            }
         }
         
         // Seviye belirleme
@@ -811,10 +843,12 @@ export class BotAI {
      * Rakipten öğren - oyuncunun başarılı hamlelerini taklit et
      */
     learnFromOpponent(playerMove) {
+        if (!this.opponentAnalysis) this.initOpponentAnalysis();
         const oa = this.opponentAnalysis;
+        if (!oa.learnedPatterns) oa.learnedPatterns = [];
         
         // Cascade yapan hamleleri öğren
-        if (playerMove.result === 'safe' && playerMove.cellsRevealed > 5) {
+        if (playerMove && playerMove.result === 'safe' && playerMove.cellsRevealed > 5) {
             const pattern = {
                 type: 'cascade_position',
                 x: playerMove.x,
@@ -832,7 +866,7 @@ export class BotAI {
         }
         
         // Hızlı skor artışı yapan bölgeleri öğren
-        if (playerMove.scoreChange > 30) {
+        if (playerMove && playerMove.scoreChange > 30) {
             const pattern = {
                 type: 'high_score_area',
                 x: playerMove.x,
@@ -901,17 +935,17 @@ export class BotAI {
      * Deneyim verisine rakip analizini ekle
      */
     getOpponentAnalysisSummary() {
-        const oa = this.opponentAnalysis;
+        const oa = this.opponentAnalysis || {};
         return {
-            skillLevel: oa.skillLevel,
-            avgMoveTime: Math.round(oa.avgMoveTime),
-            isAggressive: oa.isAggressive,
-            riskTolerance: oa.riskTolerance.toFixed(2),
-            cascadeCount: oa.cascadeCount,
-            flagAccuracy: (oa.flagAccuracy * 100).toFixed(0) + '%',
-            preferredAreas: oa.preferredAreas.slice(0, 5),
-            learnedPatterns: oa.learnedPatterns.length,
-            totalMoves: oa.movePatterns.length
+            skillLevel: oa.skillLevel || 'unknown',
+            avgMoveTime: Math.round(oa.avgMoveTime || 0),
+            isAggressive: oa.isAggressive || false,
+            riskTolerance: (oa.riskTolerance || 0).toFixed(2),
+            cascadeCount: oa.cascadeCount || 0,
+            flagAccuracy: ((oa.flagAccuracy || 0) * 100).toFixed(0) + '%',
+            preferredAreas: (oa.preferredAreas || []).slice(0, 5),
+            learnedPatterns: (oa.learnedPatterns || []).length,
+            totalMoves: (oa.movePatterns || []).length
         };
     }
     
