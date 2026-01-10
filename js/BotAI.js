@@ -95,7 +95,6 @@ export class BotAI {
             skillLevel: 'unknown',   // beginner, intermediate, advanced, expert
             learnedPatterns: []      // Oyuncudan öğrenilen pattern'ler
         };
-        };
         
         // ==================== AKILLI BEYİN ====================
         this.brain = {
