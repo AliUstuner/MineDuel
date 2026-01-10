@@ -460,6 +460,22 @@ export class BotAI {
                 console.log(`%c║  📊 Toplam Oyun: ${String(result.totalGames).padEnd(6)} | Win Rate: ${String(result.winRate + '%').padEnd(7)}        ║`, 'color: #00ff00; font-weight: bold;');
                 console.log('%c╚══════════════════════════════════════════════════════════╝', 'color: #00ff00; font-weight: bold;');
                 
+                // Oyuncu analiz sonuçlarını göster
+                const oa = this.opponentAnalysis;
+                if (oa.movePatterns.length > 0) {
+                    console.log('%c╔══════════════════════════════════════════════════════════╗', 'color: #00ccff; font-weight: bold;');
+                    console.log('%c║  👁️  OYUNCU ANALİZİ - BOT ÖĞRENME RAPORU                 ║', 'color: #00ccff; font-weight: bold;');
+                    console.log('%c╠══════════════════════════════════════════════════════════╣', 'color: #00ccff; font-weight: bold;');
+                    console.log(`%c║  🎯 Beceri Seviyesi: ${oa.skillLevel.padEnd(20)}              ║`, 'color: #00ccff; font-weight: bold;');
+                    console.log(`%c║  ⚡ Ortalama Hamle Süresi: ${String(Math.round(oa.avgMoveTime)) + 'ms'.padEnd(15)}       ║`, 'color: #00ccff; font-weight: bold;');
+                    console.log(`%c║  🎲 Risk Toleransı: %${(oa.riskTolerance * 100).toFixed(0).padEnd(20)}        ║`, 'color: #00ccff; font-weight: bold;');
+                    console.log(`%c║  🌊 Cascade Sayısı: ${String(oa.cascadeCount).padEnd(23)}       ║`, 'color: #00ccff; font-weight: bold;');
+                    console.log(`%c║  🚩 Bayrak Doğruluğu: %${(oa.flagAccuracy * 100).toFixed(0).padEnd(19)}       ║`, 'color: #00ccff; font-weight: bold;');
+                    console.log(`%c║  📚 Öğrenilen Pattern: ${String(oa.learnedPatterns.length).padEnd(21)}       ║`, 'color: #00ccff; font-weight: bold;');
+                    console.log(`%c║  🎮 Toplam Hamle: ${String(oa.movePatterns.length).padEnd(25)}       ║`, 'color: #00ccff; font-weight: bold;');
+                    console.log('%c╚══════════════════════════════════════════════════════════╝', 'color: #00ccff; font-weight: bold;');
+                }
+                
                 // Başarılı senkronizasyondan sonra yerel deneyimi sıfırla
                 this.resetExperience();
             } else {
