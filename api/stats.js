@@ -7,6 +7,7 @@ const GLOBAL_BOT_ID = '00000000-0000-0000-0000-000000000001';
  * GET ?user_id=xxx : Player stats
  * GET ?bot_learning=true : Global bot learning verisi
  * GET ?test=true : API test
+ * GET ?debug=true : Detaylı debug bilgisi
  * POST (body: gameResult) : Bot learning güncelleme
  */
 export default async function handler(req, res) {
@@ -19,13 +20,62 @@ export default async function handler(req, res) {
         return res.status(200).end();
     }
 
-    // API Test endpoint
-    if (req.query.test === 'true') {
+    // Debug endpoint - detaylı bilgi
+    if (req.query.debug === 'true') {
         return res.status(200).json({
-            status: 'ok',
-            supabaseConfigured: !!supabaseAdmin,
+            status: 'debug',
+            supabaseAdmin: supabaseAdmin ? 'EXISTS' : 'NULL',
+            envVars: {
+                SUPABASE_URL: process.env.SUPABASE_URL ? 'SET (' + process.env.SUPABASE_URL.substring(0, 30) + '...)' : 'MISSING',
+                SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ? 'SET (length: ' + process.env.SUPABASE_SERVICE_KEY.length + ')' : 'MISSING',
+                SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ? 'SET (length: ' + process.env.SUPABASE_ANON_KEY.length + ')' : 'MISSING'
+            },
             timestamp: new Date().toISOString()
         });
+    }
+
+    // API Test endpoint
+    if (req.query.test === 'true') {
+        try {
+            // Supabase bağlantısını test et
+            if (!supabaseAdmin) {
+                return res.status(200).json({
+                    status: 'error',
+                    supabaseConfigured: false,
+                    error: 'supabaseAdmin is null'
+                });
+            }
+            
+            // Basit bir sorgu yap
+            const { data, error } = await supabaseAdmin
+                .from('bot_learning_global')
+                .select('id, total_games')
+                .eq('id', GLOBAL_BOT_ID)
+                .single();
+            
+            if (error) {
+                return res.status(200).json({
+                    status: 'db_error',
+                    supabaseConfigured: true,
+                    error: error.message,
+                    hint: error.hint || 'Check if table exists'
+                });
+            }
+            
+            return res.status(200).json({
+                status: 'ok',
+                supabaseConfigured: true,
+                dbConnected: true,
+                totalGames: data?.total_games || 0,
+                timestamp: new Date().toISOString()
+            });
+        } catch (e) {
+            return res.status(200).json({
+                status: 'exception',
+                error: e.message,
+                stack: e.stack?.substring(0, 200)
+            });
+        }
     }
 
     // Check if supabaseAdmin is available
