@@ -514,11 +514,57 @@ export class BotAI {
         
         this.reset();
         
+        // İlk hamle için tahtayı hemen analiz et
+        this.initialBoardScan();
+        
         const winRate = this.getWinRate();
         const bestStrat = this.getBestStrategy();
         console.log(`[AI] Başladı | Zorluk: ${this.difficulty} | Oyunlar: ${this.learning.stats.gamesPlayed} | Kazanma: %${winRate} | En iyi strateji: ${bestStrat}`);
         
+        // Hemen düşünmeye başla - gecikmesiz
         this.scheduleThink();
+        
+        // Global learning'i arka planda yükle (ilk hamleyi geciktirmez)
+        if (!this.globalLearningLoaded) {
+            this.loadGlobalLearning();
+        }
+    }
+    
+    // Oyun başında tahtayı tara ve güvenli başlangıç noktaları bul
+    initialBoardScan() {
+        if (!this.board?.grid) return;
+        
+        // Köşeler ve kenarlar genellikle güvenlidir - başlangıç stratejisi
+        const corners = [
+            { x: 0, y: 0 },
+            { x: this.gridSize - 1, y: 0 },
+            { x: 0, y: this.gridSize - 1 },
+            { x: this.gridSize - 1, y: this.gridSize - 1 }
+        ];
+        
+        // Merkeze yakın noktalar (büyük alan açma potansiyeli)
+        const center = Math.floor(this.gridSize / 2);
+        const centerPoints = [
+            { x: center, y: center },
+            { x: center - 1, y: center },
+            { x: center + 1, y: center },
+            { x: center, y: center - 1 },
+            { x: center, y: center + 1 }
+        ];
+        
+        // Başlangıç stratejisi: Köşelerden veya merkezden başla
+        const startPoints = Math.random() > 0.5 ? corners : centerPoints;
+        
+        for (const point of startPoints) {
+            const cell = this.board.grid[point.y]?.[point.x];
+            if (cell && !cell.isRevealed && !cell.isFlagged && !cell.isMine) {
+                // İlk hamle için güvenli hücre olarak işaretle
+                this.knowledge.safeCells.add(`${point.x},${point.y}`);
+                break;
+            }
+        }
+        
+        console.log(`[AI] İlk tarama tamamlandı - ${this.knowledge.safeCells.size} güvenli hücre bulundu`);
     }
     
     stop() {
@@ -620,15 +666,22 @@ export class BotAI {
             if (action) {
                 this.executeAction(action);
                 this.brain.stuckCount = 0;
+                this.brain.myState.movesThisGame++;
             } else {
                 this.brain.stuckCount++;
-                if (this.brain.stuckCount >= 3) {
+                console.log(`[AI] Takıldı (${this.brain.stuckCount}/2) - acil eylem aranıyor`);
+                
+                // 2 kere takılırsa acil eylem yap
+                if (this.brain.stuckCount >= 2) {
                     this.emergencyAction();
+                    this.brain.stuckCount = 0;
                 }
             }
             
         } catch (error) {
             console.error('[AI] Error:', error);
+            // Hata durumunda bile acil eylem yap
+            this.emergencyAction();
         }
         
         this.isThinking = false;
@@ -1342,10 +1395,63 @@ export class BotAI {
     }
     
     emergencyAction() {
+        console.log('[AI] ACİL EYLEM - Takılma çözülüyor...');
+        
+        // Önce tahtayı yeniden tara
+        this.deepBoardAnalysis();
+        
+        // 1. Güvenli hücre var mı kontrol et
+        for (const key of this.knowledge.safeCells) {
+            const [x, y] = key.split(',').map(Number);
+            const cell = this.board?.grid?.[y]?.[x];
+            if (cell && !cell.isRevealed && !cell.isFlagged) {
+                this.game?.makeBotMove?.(x, y);
+                console.log('[AI] Acil: Güvenli hücre açıldı:', x, y);
+                return;
+            }
+        }
+        
+        // 2. Köşelerden birini dene (genellikle güvenli)
+        const corners = [
+            { x: 0, y: 0 },
+            { x: this.gridSize - 1, y: 0 },
+            { x: 0, y: this.gridSize - 1 },
+            { x: this.gridSize - 1, y: this.gridSize - 1 }
+        ];
+        
+        for (const corner of corners) {
+            const cell = this.board?.grid?.[corner.y]?.[corner.x];
+            if (cell && !cell.isRevealed && !cell.isFlagged) {
+                this.game?.makeBotMove?.(corner.x, corner.y);
+                console.log('[AI] Acil: Köşe açıldı:', corner.x, corner.y);
+                return;
+            }
+        }
+        
+        // 3. Kenarlardan birini dene
+        for (let i = 0; i < this.gridSize; i++) {
+            const edges = [
+                { x: i, y: 0 },
+                { x: i, y: this.gridSize - 1 },
+                { x: 0, y: i },
+                { x: this.gridSize - 1, y: i }
+            ];
+            
+            for (const edge of edges) {
+                const cell = this.board?.grid?.[edge.y]?.[edge.x];
+                if (cell && !cell.isRevealed && !cell.isFlagged) {
+                    this.game?.makeBotMove?.(edge.x, edge.y);
+                    console.log('[AI] Acil: Kenar açıldı:', edge.x, edge.y);
+                    return;
+                }
+            }
+        }
+        
+        // 4. Son çare: Rastgele hücre
         const random = this.findRandomCell();
         if (random) {
             this.game?.makeBotMove?.(random.x, random.y);
-            console.log('[AI] Acil hamle:', random.x, random.y);
+            console.log('[AI] Acil: Rastgele hamle:', random.x, random.y);
         }
     }
     
