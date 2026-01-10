@@ -9,7 +9,8 @@
  * - Güçleri stratejik olarak seçer
  * - Kendi kararlarını verir
  * 
- * v6 - GLOBAL AI: Herkes aynı AI ile oynuyor!
+ * v6.1 - GLOBAL AI: Herkes aynı AI ile oynuyor!
+ * Build: 20260110-001
  */
 
 export class BotAI {
@@ -547,7 +548,19 @@ export class BotAI {
         this.brain.stuckCount = 0;
         this.brain.mood = 'balanced';
         this.brain.myState = { score: 0, progress: 0, minesHit: 0, movesThisGame: 0 };
-        this.brain.playerState = { score: 0, lastScore: 0, scoreHistory: [], speed: 0, isOnStreak: false, estimatedProgress: 0 };
+        this.brain.playerState = { 
+            score: 0, 
+            lastScore: 0, 
+            scoreHistory: [], 
+            speed: 0, 
+            isOnStreak: false, 
+            estimatedProgress: 0 
+        };
+        
+        // Learning null ise default oluştur
+        if (!this.learning || !this.learning.patterns) {
+            this.learning = this.getDefaultLearning();
+        }
     }
     
     freeze(duration) {
