@@ -8,9 +8,11 @@
  * - Oyuncu tahtasını izler ve analiz eder
  * - Güçleri stratejik olarak seçer
  * - Kendi kararlarını verir
+ * - HATA ÖĞRENME: Mayın basma ve yanlış bayrak hatalarından öğrenir
+ * - PATTERN TANIMA: Benzer durumlardan kaçınır
  * 
- * v6.1 - GLOBAL AI: Herkes aynı AI ile oynuyor!
- * Build: 20260110-001
+ * v7.0 - AKILLI HATA ÖĞRENMESİ
+ * Build: 20260110-002
  */
 
 export class BotAI {
@@ -41,7 +43,9 @@ export class BotAI {
                 score: 0,
                 progress: 0,
                 minesHit: 0,
-                movesThisGame: 0
+                movesThisGame: 0,
+                correctFlags: 0,
+                wrongFlagsPlaced: 0
             },
             
             // Rakip (oyuncu) analizi
@@ -69,9 +73,10 @@ export class BotAI {
             
             // Hata takibi - kendi hatalarından öğrenme
             mistakes: {
-                mineHits: [],       // Mayına basılan pozisyonlar
-                wrongFlags: [],     // Yanlış konulan bayraklar
-                missedMines: []     // Kaçırılan mayınlar
+                mineHits: [],       // Mayına basılan pozisyonlar ve çevre durumu
+                wrongFlags: [],     // Yanlış konulan bayraklar ve nedenleri
+                missedMines: [],    // Kaçırılan mayınlar (fark edilebilseydi)
+                patterns: []        // Öğrenilmiş tehlikeli pattern'ler
             },
             
             // Son hamleler - pattern öğrenme
@@ -90,7 +95,10 @@ export class BotAI {
             radarMines: new Set(),
             
             // İşlenmemiş radar mayınları (bayraklanmayı bekliyor)
-            pendingRadarMines: []
+            pendingRadarMines: [],
+            
+            // Öğrenilmiş tehlikeli bölgeler (pattern'lerden)
+            dangerZones: new Map()  // key -> danger level (0-1)
         };
         
         // ==================== GÜÇ YÖNETİMİ ====================
@@ -111,7 +119,7 @@ export class BotAI {
         // Sonra global veriyi async yükle (Supabase'den)
         this.loadGlobalLearning();
         
-        console.log(`[AI] ${difficulty.toUpperCase()} | Win Rate: ${this.getWinRate()}% | GLOBAL AI v6`);
+        console.log(`[AI] ${difficulty.toUpperCase()} | Win Rate: ${this.getWinRate()}% | GLOBAL AI v7`);
     }
     
     // ==================== ZORLUK AYARLARI ====================
@@ -1069,6 +1077,7 @@ export class BotAI {
     // ==================== 5. YANLIŞ BAYRAK TESPİTİ VE DÜZELTMESİ ====================
     
     detectWrongFlags() {
+        const previousWrongFlags = new Set(this.knowledge.wrongFlags);
         this.knowledge.wrongFlags.clear();
         
         for (let y = 0; y < this.gridSize; y++) {
@@ -1081,13 +1090,22 @@ export class BotAI {
                 // Güvenli olarak bilinen bir hücre bayraklıysa yanlış
                 if (this.knowledge.safeCells.has(key)) {
                     this.knowledge.wrongFlags.add(key);
-                    console.log(`[AI] Yanlış bayrak tespit: ${key} (güvenli hücre)`);
+                    // YENİ: Yanlış bayraktan öğren
+                    if (!previousWrongFlags.has(key)) {
+                        this.learnFromWrongFlag(x, y);
+                    }
+                    console.log(`[AI] 🚩❌ Yanlış bayrak tespit: ${key} (güvenli hücre)`);
+                    continue;
+                }
+                
+                // RADAR KONTROLÜ: Radar mayınlarını yanlış olarak işaretleme
+                if (this.knowledge.radarMines.has(key)) {
+                    // Radar mayını, kesin mayın - yanlış değil
                     continue;
                 }
                 
                 // Komşu sayılardan kontrol - daha sıkı analiz
                 const neighbors = this.getNeighbors(x, y);
-                let isSuspicious = false;
                 
                 for (const n of neighbors) {
                     const nc = this.board.grid[n.y][n.x];
@@ -1103,11 +1121,14 @@ export class BotAI {
                         if (!nnc.isRevealed && !nnc.isFlagged) hiddenCount++;
                     }
                     
-                    // Fazla bayrak varsa yanlış
+                    // Fazla bayrak varsa yanlış - KESİN TESPİT
                     if (flagCount > nc.neighborCount) {
                         this.knowledge.wrongFlags.add(key);
-                        console.log(`[AI] Yanlış bayrak tespit: ${key} (fazla bayrak: ${flagCount}/${nc.neighborCount})`);
-                        isSuspicious = true;
+                        // YENİ: Yanlış bayraktan öğren
+                        if (!previousWrongFlags.has(key)) {
+                            this.learnFromWrongFlag(x, y);
+                        }
+                        console.log(`[AI] 🚩❌ Yanlış bayrak tespit: ${key} (fazla bayrak: ${flagCount}/${nc.neighborCount})`);
                         break;
                     }
                     
@@ -1133,7 +1154,7 @@ export class BotAI {
     
     // Derin tahta analizi - tüm tahtayı yeniden değerlendir
     deepBoardAnalysis() {
-        // Tüm açık sayıları kontrol et
+        // İlk geçiş: Temel analiz
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.board?.grid?.[y]?.[x];
@@ -1164,6 +1185,85 @@ export class BotAI {
                     }
                 }
             }
+        }
+        
+        // İkinci geçiş: Çapraz analiz (intersection pattern)
+        this.crossReferenceAnalysis();
+        
+        // Üçüncü geçiş: Olasılık güncelleme
+        this.updateProbabilitiesFromAnalysis();
+    }
+    
+    // Çapraz referans analizi - iki sayının kesişimindeki hücreleri analiz et
+    crossReferenceAnalysis() {
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell1 = this.board?.grid?.[y]?.[x];
+                if (!cell1?.isRevealed || cell1.isMine || cell1.neighborCount === 0) continue;
+                
+                // Bu sayının komşularını al
+                const neighbors1 = this.getNeighbors(x, y);
+                const hidden1 = neighbors1.filter(n => {
+                    const c = this.board.grid[n.y][n.x];
+                    return !c.isRevealed && !c.isFlagged;
+                });
+                const flagged1 = neighbors1.filter(n => this.board.grid[n.y][n.x].isFlagged).length;
+                const remaining1 = cell1.neighborCount - flagged1;
+                
+                // Komşu sayıları kontrol et
+                for (const n of neighbors1) {
+                    const cell2 = this.board.grid[n.y][n.x];
+                    if (!cell2.isRevealed || cell2.neighborCount === 0) continue;
+                    
+                    const neighbors2 = this.getNeighbors(n.x, n.y);
+                    const hidden2 = neighbors2.filter(n2 => {
+                        const c = this.board.grid[n2.y][n2.x];
+                        return !c.isRevealed && !c.isFlagged;
+                    });
+                    const flagged2 = neighbors2.filter(n2 => this.board.grid[n2.y][n2.x].isFlagged).length;
+                    const remaining2 = cell2.neighborCount - flagged2;
+                    
+                    // Kesişen hücreler
+                    const intersection = hidden1.filter(h1 => 
+                        hidden2.some(h2 => h1.x === h2.x && h1.y === h2.y)
+                    );
+                    
+                    // Sadece birincide olanlar
+                    const only1 = hidden1.filter(h1 => 
+                        !hidden2.some(h2 => h1.x === h2.x && h1.y === h2.y)
+                    );
+                    
+                    // Analiz: Eğer birinci sayının tüm mayınları kesişimde ise
+                    // sadece birincide olanlar güvenli
+                    if (remaining1 <= intersection.length && only1.length > 0 && remaining1 > 0) {
+                        for (const safe of only1) {
+                            this.knowledge.safeCells.add(`${safe.x},${safe.y}`);
+                        }
+                    }
+                    
+                    // Analiz: Eğer only1 hücre sayısı = remaining1 - (kesişimdeki max mayın)
+                    // ve bu sayı pozitifse, only1'dekiler mayın
+                    const maxIntersectionMines = Math.min(remaining1, intersection.length);
+                    if (remaining1 - maxIntersectionMines === only1.length && only1.length > 0) {
+                        for (const mine of only1) {
+                            this.knowledge.mineCells.add(`${mine.x},${mine.y}`);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Analizden olasılıkları güncelle
+    updateProbabilitiesFromAnalysis() {
+        for (const key of this.knowledge.safeCells) {
+            this.knowledge.probabilities.set(key, 0);
+            this.knowledge.dangerZones.delete(key);
+        }
+        
+        for (const key of this.knowledge.mineCells) {
+            this.knowledge.probabilities.set(key, 1);
+            this.knowledge.dangerZones.set(key, 1);
         }
     }
     
@@ -1274,6 +1374,7 @@ export class BotAI {
         // Her hamlede tahtayı yeniden analiz et - hatları yakala
         this.deepBoardAnalysis();
         this.detectWrongFlags();
+        this.applyLearnedPatterns();  // YENİ: Öğrenilmiş pattern'leri uygula
         
         // EN YÜKSEK ÖNCELİK: Yanlış bayrağı düzelt
         if (this.knowledge.wrongFlags.size > 0) {
@@ -1281,7 +1382,7 @@ export class BotAI {
                 const [x, y] = key.split(',').map(Number);
                 const cell = this.board?.grid?.[y]?.[x];
                 if (cell && cell.isFlagged && !cell.isRevealed) {
-                    console.log(`[AI] Yanlış bayrak düzeltiliyor: ${key}`);
+                    console.log(`[AI] 🚩➡️ Yanlış bayrak düzeltiliyor: ${key}`);
                     actions.push({ type: 'unflag', x, y, priority: 150, reason: 'Yanlış bayrak düzelt' });
                     // Düzeltildikten sonra listeden çıkar
                     this.knowledge.wrongFlags.delete(key);
@@ -1303,12 +1404,15 @@ export class BotAI {
             }
         }
         
-        // Kesin güvenli hücre - GERÇEKTEN güvenli olanı bul
+        // Kesin güvenli hücre - GERÇEKTEN güvenli olanı bul (tehlikeli pattern'leri kontrol et)
         for (const key of this.knowledge.safeCells) {
             const [x, y] = key.split(',').map(Number);
             const cell = this.board?.grid?.[y]?.[x];
             if (cell && !cell.isRevealed && !cell.isFlagged) {
-                actions.push({ type: 'reveal', x, y, priority: 90, reason: 'Kesin güvenli' });
+                // YENİ: Tehlikeli pattern kontrolü - güvenli bile olsa dikkatli ol
+                const isDangerous = this.isDangerousPattern(x, y);
+                const priority = isDangerous ? 75 : 90;  // Tehlikeliyse önceliği düşür
+                actions.push({ type: 'reveal', x, y, priority, reason: isDangerous ? 'Güvenli (dikkat)' : 'Kesin güvenli' });
                 break;
             }
         }
@@ -1318,6 +1422,7 @@ export class BotAI {
             const [x, y] = key.split(',').map(Number);
             const cell = this.board?.grid?.[y]?.[x];
             if (cell && !cell.isFlagged && !cell.isRevealed) {
+                this.brain.myState.correctFlags++;
                 actions.push({ type: 'flag', x, y, priority: 85, reason: 'Kesin mayın' });
                 break;
             }
@@ -1334,15 +1439,22 @@ export class BotAI {
         if (lowRisk) {
             // Öğrenilmiş hatalardan bu hücrenin riski artmış mı kontrol et
             const learnedRisk = this.knowledge.probabilities.get(`${lowRisk.x},${lowRisk.y}`) || 0;
-            const adjustedRisk = Math.max(lowRisk.prob, learnedRisk);
+            const dangerZoneRisk = this.knowledge.dangerZones.get(`${lowRisk.x},${lowRisk.y}`) || 0;
+            const patternRisk = this.isDangerousPattern(lowRisk.x, lowRisk.y) ? 0.3 : 0;
             
-            actions.push({
-                type: 'reveal',
-                x: lowRisk.x,
-                y: lowRisk.y,
-                priority: 60 - adjustedRisk * 50,
-                reason: `Risk: %${(adjustedRisk * 100).toFixed(0)}`
-            });
+            // Tüm risklerin maksimumunu al
+            const adjustedRisk = Math.max(lowRisk.prob, learnedRisk, dangerZoneRisk, patternRisk);
+            
+            // Çok riskli değilse ekle
+            if (adjustedRisk < 0.7) {
+                actions.push({
+                    type: 'reveal',
+                    x: lowRisk.x,
+                    y: lowRisk.y,
+                    priority: 60 - adjustedRisk * 50,
+                    reason: `Risk: %${(adjustedRisk * 100).toFixed(0)}`
+                });
+            }
         }
         
         // Rastgele hamle - ama öğrenilmiş riskli bölgeleri önle
@@ -1365,6 +1477,25 @@ export class BotAI {
         }
     }
     
+    // YENİ: Öğrenilmiş pattern'leri mevcut tahtaya uygula
+    applyLearnedPatterns() {
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.board?.grid?.[y]?.[x];
+                if (!cell || cell.isRevealed || cell.isFlagged) continue;
+                
+                const key = `${x},${y}`;
+                
+                // Tehlikeli pattern kontrolü
+                if (this.isDangerousPattern(x, y)) {
+                    const currentRisk = this.knowledge.probabilities.get(key) || 0.5;
+                    this.knowledge.probabilities.set(key, Math.max(currentRisk, 0.7));
+                    this.knowledge.dangerZones.set(key, 0.7);
+                }
+            }
+        }
+    }
+    
     // Güvenli rastgele hücre bul - öğrenilmiş riskli bölgeleri önle
     findSafeRandomCell() {
         const candidates = [];
@@ -1376,21 +1507,54 @@ export class BotAI {
                 
                 const key = `${x},${y}`;
                 const learnedRisk = this.knowledge.probabilities.get(key) || 0;
+                const dangerZoneRisk = this.knowledge.dangerZones.get(key) || 0;
+                const totalRisk = Math.max(learnedRisk, dangerZoneRisk);
                 
-                // Öğrenilmiş riskli hücrelerden kaçın
-                if (learnedRisk < 0.5 && !this.knowledge.mineCells.has(key)) {
-                    candidates.push({ x, y, risk: learnedRisk });
+                // Tehlikeli pattern kontrolü
+                const hasPatternRisk = this.isDangerousPattern(x, y);
+                
+                // Öğrenilmiş riskli hücrelerden ve tehlikeli pattern'lerden kaçın
+                if (totalRisk < 0.5 && !hasPatternRisk && !this.knowledge.mineCells.has(key)) {
+                    candidates.push({ x, y, risk: totalRisk });
                 }
             }
         }
         
         if (candidates.length === 0) {
-            return this.findRandomCell();
+            // Hiç güvenli hücre yoksa, en az riskli olanı bul
+            return this.findLowestRiskCell();
         }
         
         // En düşük riskli olanı seç
         candidates.sort((a, b) => a.risk - b.risk);
         return candidates[0];
+    }
+    
+    // En düşük riskli hücreyi bul (fallback)
+    findLowestRiskCell() {
+        let lowestRisk = 1.0;
+        let bestCell = null;
+        
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.board?.grid?.[y]?.[x];
+                if (!cell || cell.isRevealed || cell.isFlagged) continue;
+                
+                const key = `${x},${y}`;
+                if (this.knowledge.mineCells.has(key)) continue;
+                
+                const risk = this.knowledge.probabilities.get(key) || 0.5;
+                const dangerRisk = this.knowledge.dangerZones.get(key) || 0;
+                const totalRisk = Math.max(risk, dangerRisk);
+                
+                if (totalRisk < lowestRisk) {
+                    lowestRisk = totalRisk;
+                    bestCell = { x, y, risk: totalRisk };
+                }
+            }
+        }
+        
+        return bestCell || this.findRandomCell();
     }
     
     selectBestPower() {
@@ -1611,28 +1775,94 @@ export class BotAI {
     
     // Hatadan öğren - benzer durumları gelecekte önle
     learnFromMistake(x, y, mistakeType) {
+        const neighborState = this.getNeighborState(x, y);
+        
         const mistake = {
             x, y,
             type: mistakeType,
-            neighborState: this.getNeighborState(x, y),
+            neighborState,
             gamePhase: this.brain.gameState.phase,
             mood: this.brain.mood,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            // Ek bilgiler - pattern tanıma için
+            probability: this.knowledge.probabilities.get(`${x},${y}`) || 0.5,
+            wasInDangerZone: this.knowledge.dangerZones.has(`${x},${y}`)
         };
         
-        this.brain.mistakes.mineHits.push(mistake);
+        if (mistakeType === 'mine_hit') {
+            this.brain.mistakes.mineHits.push(mistake);
+            this.brain.myState.minesHit++;
+            console.log(`[AI] 💥 HATA ÖĞRENİLDİ: Mayına basıldı (${x},${y}) | Çevre: ${JSON.stringify(neighborState)}`);
+        } else if (mistakeType === 'wrong_flag') {
+            this.brain.mistakes.wrongFlags.push(mistake);
+            this.brain.myState.wrongFlagsPlaced++;
+            console.log(`[AI] 🚩❌ HATA ÖĞRENİLDİ: Yanlış bayrak (${x},${y})`);
+        }
         
-        // Son 20 hatayı tut
-        if (this.brain.mistakes.mineHits.length > 20) {
+        // Son 30 hatayı tut
+        if (this.brain.mistakes.mineHits.length > 30) {
             this.brain.mistakes.mineHits.shift();
+        }
+        if (this.brain.mistakes.wrongFlags.length > 30) {
+            this.brain.mistakes.wrongFlags.shift();
         }
         
         // Bu durumu risk haritasına ekle
         const key = `${x},${y}`;
         this.knowledge.mineCells.add(key);
         
+        // Pattern olarak kaydet - gelecekte benzer durumlardan kaçın
+        this.learnPattern(mistake);
+        
         // Benzer komşu yapısına sahip hücreleri riskli olarak işaretle
         this.markSimilarCellsAsRisky(mistake.neighborState);
+        
+        // Tehlikeli bölge olarak kaydet
+        this.knowledge.dangerZones.set(key, 1.0);
+    }
+    
+    // Pattern öğren - benzer durumları tanı
+    learnPattern(mistake) {
+        const pattern = {
+            neighborState: mistake.neighborState,
+            count: 1,
+            lastSeen: Date.now()
+        };
+        
+        // Benzer pattern var mı kontrol et
+        let found = false;
+        for (const existing of this.brain.mistakes.patterns) {
+            if (this.isSimilarNeighborState(existing.neighborState, pattern.neighborState)) {
+                existing.count++;
+                existing.lastSeen = Date.now();
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
+            this.brain.mistakes.patterns.push(pattern);
+        }
+        
+        // En fazla 20 pattern tut
+        if (this.brain.mistakes.patterns.length > 20) {
+            // En eski olanı sil
+            this.brain.mistakes.patterns.sort((a, b) => b.lastSeen - a.lastSeen);
+            this.brain.mistakes.patterns.pop();
+        }
+    }
+    
+    // Bir hücrenin öğrenilmiş tehlikeli pattern'e uyup uymadığını kontrol et
+    isDangerousPattern(x, y) {
+        const neighborState = this.getNeighborState(x, y);
+        
+        for (const pattern of this.brain.mistakes.patterns) {
+            if (pattern.count >= 2 && this.isSimilarNeighborState(neighborState, pattern.neighborState)) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     // Benzer hücreleri riskli olarak işaretle
@@ -1646,19 +1876,44 @@ export class BotAI {
                 
                 // Benzer yapıya sahipse risk olarak işaretle
                 if (this.isSimilarNeighborState(neighborState, mistakeNeighborState)) {
-                    const currentProb = this.knowledge.probabilities.get(`${x},${y}`) || 0.5;
-                    this.knowledge.probabilities.set(`${x},${y}`, Math.min(0.9, currentProb + 0.2));
+                    const key = `${x},${y}`;
+                    const currentProb = this.knowledge.probabilities.get(key) || 0.5;
+                    const newProb = Math.min(0.95, currentProb + 0.25);
+                    this.knowledge.probabilities.set(key, newProb);
+                    this.knowledge.dangerZones.set(key, newProb);
+                    console.log(`[AI] ⚠️ Benzer riskli hücre: (${x},${y}) - Risk: %${(newProb * 100).toFixed(0)}`);
                 }
             }
         }
     }
     
-    // Komşu durumları karşılaştır
+    // Yanlış bayraktan öğren
+    learnFromWrongFlag(x, y) {
+        this.learnFromMistake(x, y, 'wrong_flag');
+        
+        // Bu hücreyi güvenli olarak işaretle
+        const key = `${x},${y}`;
+        this.knowledge.safeCells.add(key);
+        this.knowledge.mineCells.delete(key);
+        this.knowledge.dangerZones.delete(key);
+    }
+    
+    // Komşu durumları karşılaştır - daha hassas
     isSimilarNeighborState(state1, state2) {
-        // Benzer sayıda açık/gizli/bayraklı hücre varsa benzer kabul et
-        return Math.abs(state1.revealed - state2.revealed) <= 1 &&
-               Math.abs(state1.hidden - state2.hidden) <= 1 &&
-               state1.numbers.some(n => state2.numbers.includes(n));
+        if (!state1 || !state2) return false;
+        
+        // Aynı sayıda açık/gizli/bayraklı hücre varsa benzer kabul et
+        const revealedDiff = Math.abs(state1.revealed - state2.revealed);
+        const hiddenDiff = Math.abs(state1.hidden - state2.hidden);
+        const flaggedDiff = Math.abs(state1.flagged - state2.flagged);
+        
+        // Sayı pattern'i benzerliği
+        const hasCommonNumber = state1.numbers.some(n => state2.numbers.includes(n));
+        
+        return revealedDiff <= 1 && 
+               hiddenDiff <= 2 && 
+               flaggedDiff <= 1 && 
+               (hasCommonNumber || (state1.numbers.length === 0 && state2.numbers.length === 0));
     }
     
     usePower(power) {

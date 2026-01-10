@@ -18,6 +18,15 @@ export default async function handler(req, res) {
         return res.status(200).end();
     }
 
+    // Check if supabaseAdmin is available
+    if (!supabaseAdmin) {
+        console.error('[STATS API] supabaseAdmin is null - missing env variables');
+        return res.status(500).json({ 
+            error: 'Database connection not available',
+            hint: 'Check SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables'
+        });
+    }
+
     try {
         // POST = Bot learning güncelleme
         if (req.method === 'POST') {
@@ -37,7 +46,7 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     } catch (error) {
         console.error('Stats API error:', error);
-        return res.status(500).json({ error: 'Internal server error' });
+        return res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 }
 
