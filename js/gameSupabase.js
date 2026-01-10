@@ -1716,6 +1716,20 @@ class GameClient {
             this.audio.playReveal(revealed.length);
         }
         
+        // ==================== BOT'A OYUNCU HAMLESİNİ BİLDİR ====================
+        if (this.isBotMode && this.bot && typeof this.bot.watchPlayerMove === 'function') {
+            this.bot.watchPlayerMove({
+                type: 'reveal',
+                x: cell.x,
+                y: cell.y,
+                result: hitMine ? 'mine' : (revealed.length > 1 ? 'cascade' : 'safe'),
+                cellsRevealed: revealed.length,
+                scoreChange: points,
+                currentScore: this.score,
+                isCorrect: !hitMine
+            });
+        }
+        
         // Broadcast move
         this.broadcastMove({ x: cell.x, y: cell.y, revealed, score: this.score });
         
@@ -1733,6 +1747,18 @@ class GameClient {
         cellData.isFlagged = !cellData.isFlagged;
         this.playerBoard.render();
         this.audio.playClick();
+        
+        // ==================== BOT'A BAYRAK HAMLESİNİ BİLDİR ====================
+        if (this.isBotMode && this.bot && typeof this.bot.watchPlayerMove === 'function') {
+            this.bot.watchPlayerMove({
+                type: 'flag',
+                x: cell.x,
+                y: cell.y,
+                result: cellData.isFlagged ? 'flag' : 'unflag',
+                isCorrect: cellData.isMine, // Bayrak gerçekten mayında mı
+                currentScore: this.score
+            });
+        }
         
         // Broadcast flag to opponent
         this.broadcastFlag(cell.x, cell.y, cellData.isFlagged);

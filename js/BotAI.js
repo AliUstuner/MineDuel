@@ -77,7 +77,24 @@ export class BotAI {
             movePatterns: [],
             avgMoveTime: 0,
             isAggressive: false,
-            preferredAreas: []    // Hangi bölgelere odaklanıyor
+            preferredAreas: [],    // Hangi bölgelere odaklanıyor
+            
+            // YENİ: Detaylı oyuncu takibi
+            lastMoveTime: Date.now(),
+            moveTimes: [],           // Hamle süreleri
+            consecutiveSafes: 0,     // Art arda güvenli hamleler
+            consecutiveMines: 0,     // Art arda mayınlar
+            cascadeCount: 0,         // Cascade sayısı (iyi oyuncu göstergesi)
+            cornerPreference: 0,     // Köşelerden başlama tercihi
+            edgePreference: 0,       // Kenarlardan başlama tercihi
+            centerPreference: 0,     // Merkezden başlama tercihi
+            flagAccuracy: 0,         // Bayrak doğruluğu
+            totalFlags: 0,
+            correctFlags: 0,
+            riskTolerance: 0.5,      // Ne kadar riskli oynuyor
+            skillLevel: 'unknown',   // beginner, intermediate, advanced, expert
+            learnedPatterns: []      // Oyuncudan öğrenilen pattern'ler
+        };
         };
         
         // ==================== AKILLI BEYİN ====================
@@ -491,16 +508,13 @@ export class BotAI {
             
             // Öğrenilen pattern'ler
             learnedPatterns: this.brain.mistakes.patterns.length,
+            learnedFromOpponent: this.opponentAnalysis.learnedPatterns?.length || 0,
             
             // Strateji
             strategy: this.brain.mood,
             
-            // Rakip analizi
-            opponentAnalysis: {
-                avgSpeed: this.brain.playerState.speed,
-                wasAggressive: this.opponentAnalysis.isAggressive,
-                preferredAreas: this.opponentAnalysis.preferredAreas.slice(0, 5)
-            },
+            // Rakip analizi (GENİŞLETİLMİŞ)
+            opponentAnalysis: this.getOpponentAnalysisSummary(),
             
             // Zaman
             duration: gameResult.duration || (Date.now() - (this.experience.gameStats.startTime || Date.now()))
@@ -586,6 +600,304 @@ export class BotAI {
         if (this.experience.moves.length > 100) {
             this.experience.moves.shift();
         }
+    }
+    
+    // ==================== OYUNCU İZLEME SİSTEMİ ====================
+    
+    /**
+     * Oyuncunun hamlesini izle ve analiz et
+     * Bu fonksiyon gameSupabase.js'den her oyuncu hamlesinde çağrılır
+     */
+    watchPlayerMove(moveData) {
+        const now = Date.now();
+        const oa = this.opponentAnalysis;
+        
+        // Hamle süresini hesapla
+        const moveTime = now - oa.lastMoveTime;
+        oa.lastMoveTime = now;
+        oa.moveTimes.push(moveTime);
+        
+        // Son 20 hamlenin ortalamasını al
+        if (oa.moveTimes.length > 20) oa.moveTimes.shift();
+        oa.avgMoveTime = oa.moveTimes.reduce((a, b) => a + b, 0) / oa.moveTimes.length;
+        
+        // Hamle detaylarını kaydet
+        const playerMove = {
+            x: moveData.x,
+            y: moveData.y,
+            type: moveData.type, // 'reveal', 'flag'
+            result: moveData.result, // 'safe', 'mine', 'cascade'
+            cellsRevealed: moveData.cellsRevealed || 1,
+            scoreChange: moveData.scoreChange || 0,
+            timestamp: now,
+            moveTime: moveTime
+        };
+        
+        oa.movePatterns.push(playerMove);
+        if (oa.movePatterns.length > 50) oa.movePatterns.shift();
+        
+        // İstatistikleri güncelle
+        if (moveData.type === 'reveal') {
+            oa.revealedCells += moveData.cellsRevealed || 1;
+            
+            if (moveData.result === 'mine') {
+                oa.consecutiveMines++;
+                oa.consecutiveSafes = 0;
+            } else {
+                oa.consecutiveSafes++;
+                oa.consecutiveMines = 0;
+                
+                if (moveData.cellsRevealed > 3) {
+                    oa.cascadeCount++;
+                }
+            }
+            
+            // Pozisyon tercihlerini analiz et
+            this.analyzePositionPreference(moveData.x, moveData.y);
+        }
+        
+        if (moveData.type === 'flag') {
+            oa.flaggedCells++;
+            oa.totalFlags++;
+            if (moveData.isCorrect) {
+                oa.correctFlags++;
+            }
+            oa.flagAccuracy = oa.totalFlags > 0 ? oa.correctFlags / oa.totalFlags : 0;
+        }
+        
+        // Skor geçmişi
+        if (moveData.currentScore !== undefined) {
+            oa.scoreHistory.push({
+                score: moveData.currentScore,
+                time: now
+            });
+            if (oa.scoreHistory.length > 100) oa.scoreHistory.shift();
+        }
+        
+        // Agresiflik analizi
+        this.analyzePlayerAggression();
+        
+        // Beceri seviyesini değerlendir
+        this.evaluatePlayerSkill();
+        
+        // Rakipten öğren
+        this.learnFromOpponent(playerMove);
+        
+        // Debug log (sadece önemli hamleler)
+        if (moveData.cellsRevealed > 5 || moveData.result === 'mine') {
+            console.log(`[AI WATCH] 👁️ Oyuncu: ${moveData.type} (${moveData.x},${moveData.y}) → ${moveData.result} | Cascade: ${moveData.cellsRevealed || 1} | Skill: ${oa.skillLevel}`);
+        }
+    }
+    
+    /**
+     * Oyuncunun pozisyon tercihlerini analiz et
+     */
+    analyzePositionPreference(x, y) {
+        const oa = this.opponentAnalysis;
+        const gridSize = this.gridSize;
+        
+        // Köşe kontrolü
+        if ((x === 0 || x === gridSize - 1) && (y === 0 || y === gridSize - 1)) {
+            oa.cornerPreference++;
+        }
+        // Kenar kontrolü
+        else if (x === 0 || x === gridSize - 1 || y === 0 || y === gridSize - 1) {
+            oa.edgePreference++;
+        }
+        // Merkez kontrolü
+        else if (x > 2 && x < gridSize - 3 && y > 2 && y < gridSize - 3) {
+            oa.centerPreference++;
+        }
+        
+        // Tercih edilen alanları güncelle
+        const areaKey = `${Math.floor(x / 3)},${Math.floor(y / 3)}`;
+        if (!oa.preferredAreas.includes(areaKey)) {
+            oa.preferredAreas.push(areaKey);
+            if (oa.preferredAreas.length > 10) oa.preferredAreas.shift();
+        }
+    }
+    
+    /**
+     * Oyuncunun agresifliğini analiz et
+     */
+    analyzePlayerAggression() {
+        const oa = this.opponentAnalysis;
+        
+        // Hızlı oyuncu = agresif
+        const isQuick = oa.avgMoveTime < 1500;
+        
+        // Çok cascade yapan = iyi
+        const hasCascades = oa.cascadeCount > 3;
+        
+        // Risk alan (mayına çok basan) = agresif
+        const takesRisks = oa.consecutiveMines > 0;
+        
+        oa.isAggressive = isQuick || takesRisks;
+        
+        // Risk toleransını hesapla
+        const totalMoves = oa.movePatterns.length;
+        if (totalMoves > 5) {
+            const mineMoves = oa.movePatterns.filter(m => m.result === 'mine').length;
+            oa.riskTolerance = mineMoves / totalMoves;
+        }
+    }
+    
+    /**
+     * Oyuncunun beceri seviyesini değerlendir
+     */
+    evaluatePlayerSkill() {
+        const oa = this.opponentAnalysis;
+        const totalMoves = oa.movePatterns.length;
+        
+        if (totalMoves < 5) {
+            oa.skillLevel = 'unknown';
+            return;
+        }
+        
+        // Puanlama sistemi
+        let skillScore = 50;
+        
+        // Hız (hızlı = iyi)
+        if (oa.avgMoveTime < 1000) skillScore += 15;
+        else if (oa.avgMoveTime < 2000) skillScore += 10;
+        else if (oa.avgMoveTime > 4000) skillScore -= 10;
+        
+        // Cascade oranı (yüksek = iyi)
+        const cascadeRate = oa.cascadeCount / Math.max(1, totalMoves);
+        if (cascadeRate > 0.3) skillScore += 15;
+        else if (cascadeRate > 0.15) skillScore += 10;
+        
+        // Mayın oranı (düşük = iyi)
+        const mineRate = oa.movePatterns.filter(m => m.result === 'mine').length / totalMoves;
+        if (mineRate < 0.1) skillScore += 15;
+        else if (mineRate < 0.2) skillScore += 5;
+        else if (mineRate > 0.3) skillScore -= 15;
+        
+        // Bayrak doğruluğu
+        if (oa.flagAccuracy > 0.8) skillScore += 10;
+        else if (oa.flagAccuracy < 0.3 && oa.totalFlags > 3) skillScore -= 10;
+        
+        // Skor artış hızı
+        if (oa.scoreHistory.length > 5) {
+            const recentScores = oa.scoreHistory.slice(-5);
+            const scoreGrowth = (recentScores[4].score - recentScores[0].score) / 5;
+            if (scoreGrowth > 30) skillScore += 10;
+            else if (scoreGrowth > 15) skillScore += 5;
+        }
+        
+        // Seviye belirleme
+        if (skillScore >= 80) oa.skillLevel = 'expert';
+        else if (skillScore >= 65) oa.skillLevel = 'advanced';
+        else if (skillScore >= 45) oa.skillLevel = 'intermediate';
+        else oa.skillLevel = 'beginner';
+    }
+    
+    /**
+     * Rakipten öğren - oyuncunun başarılı hamlelerini taklit et
+     */
+    learnFromOpponent(playerMove) {
+        const oa = this.opponentAnalysis;
+        
+        // Cascade yapan hamleleri öğren
+        if (playerMove.result === 'safe' && playerMove.cellsRevealed > 5) {
+            const pattern = {
+                type: 'cascade_position',
+                x: playerMove.x,
+                y: playerMove.y,
+                area: `${Math.floor(playerMove.x / 3)},${Math.floor(playerMove.y / 3)}`,
+                cellsRevealed: playerMove.cellsRevealed,
+                learned: Date.now()
+            };
+            
+            oa.learnedPatterns.push(pattern);
+            if (oa.learnedPatterns.length > 20) oa.learnedPatterns.shift();
+            
+            // Bu bilgiyi kendi stratejimde kullan
+            this.applyLearnedPattern(pattern);
+        }
+        
+        // Hızlı skor artışı yapan bölgeleri öğren
+        if (playerMove.scoreChange > 30) {
+            const pattern = {
+                type: 'high_score_area',
+                x: playerMove.x,
+                y: playerMove.y,
+                area: `${Math.floor(playerMove.x / 3)},${Math.floor(playerMove.y / 3)}`,
+                scoreChange: playerMove.scoreChange,
+                learned: Date.now()
+            };
+            
+            oa.learnedPatterns.push(pattern);
+        }
+    }
+    
+    /**
+     * Öğrenilen pattern'i uygula
+     */
+    applyLearnedPattern(pattern) {
+        // Benzer bölgelere öncelik ver
+        if (pattern.type === 'cascade_position') {
+            const areaX = Math.floor(pattern.x / 3);
+            const areaY = Math.floor(pattern.y / 3);
+            
+            // Bu bölgedeki hücrelere düşük tehlike puanı ver
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    const key = `area_${areaX + dx}_${areaY + dy}`;
+                    const current = this.knowledge.dangerZones.get(key) || 0.5;
+                    this.knowledge.dangerZones.set(key, Math.max(0.1, current - 0.1));
+                }
+            }
+        }
+    }
+    
+    /**
+     * Oyuncu skorunu güncelle (game.js'den çağrılır)
+     */
+    updatePlayerScore(score) {
+        const now = Date.now();
+        const ps = this.brain.playerState;
+        
+        ps.lastScore = ps.score;
+        ps.score = score;
+        
+        // Skor geçmişini tut
+        ps.scoreHistory.push({ score, time: now });
+        if (ps.scoreHistory.length > 50) ps.scoreHistory.shift();
+        
+        // Hız hesapla (puan/saniye)
+        if (ps.scoreHistory.length > 1) {
+            const first = ps.scoreHistory[0];
+            const last = ps.scoreHistory[ps.scoreHistory.length - 1];
+            const timeDiff = (last.time - first.time) / 1000;
+            if (timeDiff > 0) {
+                ps.speed = last.score / timeDiff;
+            }
+        }
+        
+        // Streak kontrolü
+        ps.isOnStreak = score > ps.lastScore + 20;
+        
+        // Skor farkını güncelle
+        this.brain.gameState.scoreDiff = this.brain.myState.score - score;
+    }
+    
+    /**
+     * Deneyim verisine rakip analizini ekle
+     */
+    getOpponentAnalysisSummary() {
+        const oa = this.opponentAnalysis;
+        return {
+            skillLevel: oa.skillLevel,
+            avgMoveTime: Math.round(oa.avgMoveTime),
+            isAggressive: oa.isAggressive,
+            riskTolerance: oa.riskTolerance.toFixed(2),
+            cascadeCount: oa.cascadeCount,
+            flagAccuracy: (oa.flagAccuracy * 100).toFixed(0) + '%',
+            preferredAreas: oa.preferredAreas.slice(0, 5),
+            learnedPatterns: oa.learnedPatterns.length,
+            totalMoves: oa.movePatterns.length
+        };
     }
     
     calculateGlobalWinRate(data) {
