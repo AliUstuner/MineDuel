@@ -18,7 +18,7 @@ export class GameDataCollector {
         this.isRecording = false;
         this.storageKey = 'mineduel_training_data_v2';
         this.maxStoredGames = 1000; // Daha fazla oyun sakla
-        this.apiEndpoint = '/api/training';
+        this.apiEndpoint = '/api/stats';
         
         // Anlık veriler
         this.snapshotInterval = null;

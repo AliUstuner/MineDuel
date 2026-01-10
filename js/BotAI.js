@@ -465,7 +465,7 @@ export class BotAI {
         // Oyuncu kalıplarını güncelle
         const pat = l.patterns;
         const playerScore = gameResult.playerScore || 0;
-        const playerSpeed = this.brain.playerState.speed || 5;
+        const playerSpeed = this.brain?.playerState?.speed || 5;
         
         pat.gamesAnalyzed++;
         // Hareketli ortalama (son oyunlara daha fazla ağırlık)
