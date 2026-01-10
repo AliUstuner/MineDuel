@@ -705,27 +705,45 @@ export class BotAI {
     
     // ==================== 4. RADAR SONUÇLARINI İŞLE ====================
     
-    processRadarResults() {
-        // Radar tarafından bulunan mayınları kontrol et
-        if (this.board?.highlightedMines && this.board.highlightedMines.length > 0) {
-            for (const mine of this.board.highlightedMines) {
-                const key = `${mine.x},${mine.y}`;
+    // Game tarafından çağrılır - radar mayınlarını al
+    receiveRadarResults(mines) {
+        if (!mines || mines.length === 0) return;
+        
+        console.log(`[AI] 📡 Radar ${mines.length} mayın buldu!`);
+        
+        for (const mine of mines) {
+            const key = `${mine.x},${mine.y}`;
+            
+            // Zaten bilmiyorsak kaydet
+            if (!this.knowledge.radarMines.has(key)) {
+                this.knowledge.radarMines.add(key);
+                this.knowledge.mineCells.add(key);
                 
-                // Zaten bilmiyorsak kaydet
-                if (!this.knowledge.radarMines.has(key)) {
-                    this.knowledge.radarMines.add(key);
-                    this.knowledge.mineCells.add(key);
-                    
-                    // Bayraklanmamışsa listeye ekle
-                    if (!this.knowledge.flaggedCells.has(key)) {
-                        this.knowledge.pendingRadarMines.push({ x: mine.x, y: mine.y });
-                        console.log(`[AI] Radar mayın buldu: (${mine.x},${mine.y})`);
+                // Bayraklanmamışsa listeye ekle - EN BAŞA ekle (öncelikli)
+                const cell = this.board?.grid?.[mine.y]?.[mine.x];
+                if (cell && !cell.isFlagged && !cell.isRevealed) {
+                    // Zaten listede yoksa ekle
+                    const alreadyPending = this.knowledge.pendingRadarMines.some(
+                        m => m.x === mine.x && m.y === mine.y
+                    );
+                    if (!alreadyPending) {
+                        this.knowledge.pendingRadarMines.unshift({ x: mine.x, y: mine.y });
+                        console.log(`[AI] 🎯 Bayraklanacak mayın: (${mine.x},${mine.y})`);
                     }
                 }
             }
-            
-            // Öğrenme: Radar etkinliğini kaydet
-            this.learning.powerEffectiveness.radar.minesFound += this.board.highlightedMines.length;
+        }
+        
+        // Öğrenme: Radar mayın bulduysa kaydet
+        if (this.learning.powers.radar) {
+            this.learning.powers.radar.minesFound += mines.length;
+        }
+    }
+    
+    processRadarResults() {
+        // Board'dan highlighted mines kontrolü (yedek yöntem)
+        if (this.board?.highlightedMines && this.board.highlightedMines.length > 0) {
+            this.receiveRadarResults(this.board.highlightedMines);
         }
     }
     
@@ -1080,16 +1098,8 @@ export class BotAI {
             
             console.log(`[AI] 💥 ${power.toUpperCase()} kullandı!`);
             
-            // Radar sonuçlarını hemen işle
-            if (power === 'radar') {
-                setTimeout(() => {
-                    this.processRadarResults();
-                    // Radar mayın bulduysa kaydet
-                    if (this.knowledge.pendingRadarMines.length > 0) {
-                        this.learning.powers.radar.minesFound += this.knowledge.pendingRadarMines.length;
-                    }
-                }, 100);
-            }
+            // NOT: Radar mayınları artık game.useBotPower tarafından 
+            // receiveRadarResults ile doğrudan gönderiliyor
         }
         
         return result;

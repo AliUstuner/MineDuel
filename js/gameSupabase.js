@@ -2598,6 +2598,11 @@ class GameClient {
             if (this.botBoard && typeof this.botBoard.highlightRandomMines === 'function') {
                 const mines = this.botBoard.highlightRandomMines(3);
                 console.log('[BOT POWER] Radar revealed mines:', mines);
+                
+                // BOT'A MAYINLARI BİLDİR - böylece bayraklayabilsin
+                if (this.bot && mines && mines.length > 0) {
+                    this.bot.receiveRadarResults(mines);
+                }
             }
             this.showOpponentPowerEffect('radar');
         } else if (power === 'safeburst') {
