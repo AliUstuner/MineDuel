@@ -378,45 +378,119 @@ export class BotAI {
         const local = this.learning;
         const global = globalData;
         
-        // Global veri varsa ve daha fazla oyun oynanmışsa, ona ağır bas
+        // Global veri varsa HER ZAMAN birleştir (daha agresif öğrenme)
         const globalGames = global.stats?.gamesPlayed || 0;
         const localGames = local.stats?.gamesPlayed || 0;
         
-        if (globalGames > localGames * 2) {
-            // Global veri çok daha fazla, ona güven
-            const globalWeight = 0.7;
-            const localWeight = 0.3;
-            
-            // Güç etkinliklerini birleştir
-            for (const power of ['freeze', 'shield', 'radar', 'safeburst']) {
-                if (global.powers?.[power] && local.powers?.[power]) {
-                    local.powers[power].effectiveness = 
-                        global.powers[power].effectiveness * globalWeight + 
-                        local.powers[power].effectiveness * localWeight;
-                }
-            }
-            
-            // Strateji oranlarını birleştir
-            for (const strat of ['aggressive', 'defensive', 'balanced']) {
-                if (global.strategies?.[strat] && local.strategies?.[strat]) {
-                    local.strategies[strat].rate = 
-                        global.strategies[strat].rate * globalWeight + 
-                        local.strategies[strat].rate * localWeight;
-                }
-            }
-            
-            // Oyuncu kalıplarını birleştir
-            if (global.patterns) {
-                local.patterns.avgPlayerSpeed = 
-                    (global.patterns.avgPlayerSpeed || 5) * globalWeight + 
-                    local.patterns.avgPlayerSpeed * localWeight;
-                local.patterns.avgPlayerScore = 
-                    (global.patterns.avgPlayerScore || 200) * globalWeight + 
-                    local.patterns.avgPlayerScore * localWeight;
-            }
-            
-            console.log('[GLOBAL AI] Global veriler yerel ile birleştirildi (global ağırlıklı)');
+        // Ağırlıklar - global oyun sayısına göre dinamik
+        // Daha fazla global veri = daha fazla güven
+        let globalWeight, localWeight;
+        if (globalGames >= 20) {
+            globalWeight = 0.85;
+            localWeight = 0.15;
+        } else if (globalGames >= 10) {
+            globalWeight = 0.75;
+            localWeight = 0.25;
+        } else if (globalGames >= 5) {
+            globalWeight = 0.65;
+            localWeight = 0.35;
+        } else if (globalGames >= 1) {
+            globalWeight = 0.55;
+            localWeight = 0.45;
+        } else {
+            // Global veri yok, sadece yerel kullan
+            return;
         }
+        
+        // GLOBAL STATLARİ DOĞRUDAN AKTAR
+        if (globalGames > localGames) {
+            local.stats.gamesPlayed = globalGames;
+            local.stats.wins = global.stats?.wins || 0;
+            local.stats.losses = global.stats?.losses || 0;
+            local.stats.draws = global.stats?.draws || 0;
+        }
+        
+        // Güç etkinliklerini birleştir
+        for (const power of ['freeze', 'shield', 'radar', 'safeburst']) {
+            if (global.powers?.[power]) {
+                const globalEff = global.powers[power].effectiveness || 0.5;
+                const localEff = local.powers?.[power]?.effectiveness || 0.5;
+                
+                local.powers[power] = local.powers[power] || { used: 0, effectiveness: 0.5 };
+                local.powers[power].effectiveness = globalEff * globalWeight + localEff * localWeight;
+                local.powers[power].used = Math.max(local.powers[power].used, global.powers[power].used || 0);
+            }
+        }
+        
+        // Strateji oranlarını birleştir - HER ZAMAN
+        for (const strat of ['aggressive', 'defensive', 'balanced']) {
+            if (global.strategies?.[strat]) {
+                const globalRate = global.strategies[strat].rate || 0.33;
+                const localRate = local.strategies?.[strat]?.rate || 0.33;
+                const globalUsed = global.strategies[strat].used || 0;
+                
+                local.strategies[strat] = local.strategies[strat] || { used: 0, won: 0, rate: 0.33 };
+                local.strategies[strat].rate = globalRate * globalWeight + localRate * localWeight;
+                local.strategies[strat].used = Math.max(local.strategies[strat].used, globalUsed);
+            }
+        }
+        
+        // Oyuncu kalıplarını birleştir
+        if (global.patterns) {
+            local.patterns.avgPlayerSpeed = 
+                (global.patterns.avgPlayerSpeed || 5) * globalWeight + 
+                (local.patterns?.avgPlayerSpeed || 5) * localWeight;
+            local.patterns.avgPlayerScore = 
+                (global.patterns.avgPlayerScore || 200) * globalWeight + 
+                (local.patterns?.avgPlayerScore || 200) * localWeight;
+            local.patterns.avgGameDuration = 
+                (global.patterns.avgGameDuration || 60000) * globalWeight + 
+                (local.patterns?.avgGameDuration || 60000) * localWeight;
+        }
+        
+        // Öğrenmeyi kaydet
+        this.saveLearning();
+        
+        console.log(`%c[GLOBAL AI] ✅ Birleştirme tamamlandı | Global: ${globalGames} oyun | Ağırlık: ${(globalWeight * 100).toFixed(0)}%`, 'color: #00ff00; font-weight: bold;');
+        console.log(`[GLOBAL AI] 📊 En iyi strateji: ${this.getBestStrategyFromGlobal(global.strategies)} | Güç önerisi: ${this.getBestPowerFromGlobal(global.powers)}`);
+    }
+    
+    // Global veriden en iyi stratejiyi bul
+    getBestStrategyFromGlobal(strategies) {
+        if (!strategies) return 'balanced';
+        
+        let best = 'balanced';
+        let bestRate = 0;
+        
+        for (const strat of ['aggressive', 'defensive', 'balanced']) {
+            const rate = strategies[strat]?.rate || 0;
+            const used = strategies[strat]?.used || 0;
+            if (rate > bestRate && used >= 1) {
+                best = strat;
+                bestRate = rate;
+            }
+        }
+        
+        return best;
+    }
+    
+    // Global veriden en iyi gücü bul
+    getBestPowerFromGlobal(powers) {
+        if (!powers) return 'radar';
+        
+        let best = 'radar';
+        let bestEff = 0;
+        
+        for (const power of ['freeze', 'shield', 'radar', 'safeburst']) {
+            const eff = powers[power]?.effectiveness || 0.5;
+            const used = powers[power]?.used || 0;
+            if (eff > bestEff && used >= 1) {
+                best = power;
+                bestEff = eff;
+            }
+        }
+        
+        return best;
     }
     
     /**
@@ -1057,14 +1131,18 @@ export class BotAI {
     getBestStrategy() {
         const strats = this.learning.strategies;
         let best = 'balanced';
-        let bestRate = strats.balanced.rate;
+        let bestRate = strats.balanced?.rate || 0.33;
         
-        if (strats.aggressive.rate > bestRate && strats.aggressive.used >= 3) {
+        // Global veri varsa HEMEN strateji değiştir (1+ oyun yeterli)
+        const minGames = this.globalLearningLoaded ? 1 : 2;
+        
+        if ((strats.aggressive?.rate || 0) > bestRate && (strats.aggressive?.used || 0) >= minGames) {
             best = 'aggressive';
             bestRate = strats.aggressive.rate;
         }
-        if (strats.defensive.rate > bestRate && strats.defensive.used >= 3) {
+        if ((strats.defensive?.rate || 0) > bestRate && (strats.defensive?.used || 0) >= minGames) {
             best = 'defensive';
+            bestRate = strats.defensive.rate;
         }
         
         return best;
@@ -1073,11 +1151,14 @@ export class BotAI {
     // Güç önerisi al (öğrenmeye göre)
     getPowerRecommendation() {
         const powers = this.learning.powers;
-        let best = null;
+        let best = 'radar';  // Varsayılan radar
         let bestEff = 0;
         
+        // Global veri varsa daha az oyundan öğren
+        const minGames = this.globalLearningLoaded ? 1 : 2;
+        
         for (const [power, data] of Object.entries(powers)) {
-            if (data.effectiveness > bestEff && data.used >= 2) {
+            if ((data.effectiveness || 0.5) > bestEff && (data.used || 0) >= minGames) {
                 best = power;
                 bestEff = data.effectiveness;
             }
@@ -1631,7 +1712,11 @@ export class BotAI {
         if (unrevealed.length === 0) return;
         
         if (remainingMines === unrevealed.length && remainingMines > 0) {
-            unrevealed.forEach(n => this.knowledge.mineCells.add(`${n.x},${n.y}`));
+            // SADECE tek hücre kaldıysa kesin mayın de
+            if (unrevealed.length === 1) {
+                unrevealed.forEach(n => this.knowledge.mineCells.add(`${n.x},${n.y}`));
+            }
+            // Birden fazla hücre kaldıysa sadece yüksek olasılık ver
         }
         
         if (remainingMines === 0) {
@@ -1864,11 +1949,26 @@ export class BotAI {
                     }
                 }
                 
-                // Kalan gizli hücre sayısı = kalan mayın sayısına eşitse, hepsi mayın
+                // SADECE TEK HÜCRE KALDIYSA ve tek mayın kaldıysa = KESİN MAYIN
+                // (Birden fazla hücre kaldığında kesin değil, riskli!)
                 const remainingMines = cell.neighborCount - flagCount;
-                if (remainingMines === hiddenCells.length && hiddenCells.length > 0) {
+                if (remainingMines === 1 && hiddenCells.length === 1) {
+                    // Tek bir gizli hücre kaldı ve tam 1 mayın kaldı = KESİN
+                    const h = hiddenCells[0];
+                    const key = `${h.x},${h.y}`;
+                    // Radar ile onaylı değilse bile kesin mayın
+                    this.knowledge.mineCells.add(key);
+                    console.log(`[AI] 🎯 Kesin mayın tespit: ${key} (tek kalan hücre)`);
+                }
+                // Birden fazla hücre kaldığında bayrak KOYMA - sadece olasılık hesapla
+                else if (remainingMines > 0 && hiddenCells.length > remainingMines) {
+                    // Olasılık hesapla
+                    const probability = remainingMines / hiddenCells.length;
                     for (const h of hiddenCells) {
-                        this.knowledge.mineCells.add(`${h.x},${h.y}`);
+                        const key = `${h.x},${h.y}`;
+                        const currentProb = this.knowledge.probabilities.get(key) || 0;
+                        // En yüksek olasılığı tut
+                        this.knowledge.probabilities.set(key, Math.max(currentProb, probability));
                     }
                 }
             }
@@ -1975,8 +2075,8 @@ export class BotAI {
         } else if (diff > 40) {
             this.brain.mood = 'defensive';
         } else {
-            // Öğrenilmiş en iyi stratejiyi kullan (3+ oyundan sonra)
-            if (this.learning.stats.gamesPlayed >= 3) {
+            // Global veriden öğrenilmiş stratejiyi HEMEN kullan (1+ oyundan sonra)
+            if (this.learning.stats.gamesPlayed >= 1 && this.globalLearningLoaded) {
                 this.brain.mood = bestStrategy;
             } else {
                 this.brain.mood = 'balanced';
@@ -2053,6 +2153,46 @@ export class BotAI {
         }
     }
     
+    // Mayın hücresini doğrula - gerçekten kesin mi?
+    verifyMineCell(x, y) {
+        // Bu hücrenin gerçekten mayın olduğunu doğrula
+        // Birden fazla komşu sayısı ile çapraz kontrol yap
+        
+        const neighbors = this.getNeighbors(x, y);
+        let confirmationCount = 0;
+        
+        for (const n of neighbors) {
+            const nc = this.board?.grid?.[n.y]?.[n.x];
+            if (!nc?.isRevealed || nc.neighborCount === 0) continue;
+            
+            // Bu komşunun etrafındaki durumu kontrol et
+            const nNeighbors = this.getNeighbors(n.x, n.y);
+            let flagCount = 0;
+            let hiddenCount = 0;
+            let targetIsHidden = false;
+            
+            for (const nn of nNeighbors) {
+                const nnc = this.board.grid[nn.y][nn.x];
+                if (nnc.isFlagged) flagCount++;
+                else if (!nnc.isRevealed) {
+                    hiddenCount++;
+                    if (nn.x === x && nn.y === y) targetIsHidden = true;
+                }
+            }
+            
+            // Eğer hedef hücre gizli ve kalan mayın sayısı = kalan gizli hücre sayısı ise
+            if (targetIsHidden) {
+                const remainingMines = nc.neighborCount - flagCount;
+                if (remainingMines === hiddenCount && hiddenCount === 1) {
+                    confirmationCount++;
+                }
+            }
+        }
+        
+        // En az 1 komşu tarafından onaylanmış olmalı
+        return confirmationCount >= 1;
+    }
+    
     // ==================== 8. KARAR VER ====================
     
     decideAction() {
@@ -2104,14 +2244,28 @@ export class BotAI {
             }
         }
         
-        // Kesin mayını bayrakla - GERÇEKTEN bayraklanmamış olanı bul
+        // Kesin mayını bayrakla - SADECE RADAR veya TEK KALAN HÜCRE ise
         for (const key of this.knowledge.mineCells) {
             const [x, y] = key.split(',').map(Number);
             const cell = this.board?.grid?.[y]?.[x];
             if (cell && !cell.isFlagged && !cell.isRevealed) {
-                this.brain.myState.correctFlags++;
-                actions.push({ type: 'flag', x, y, priority: 85, reason: 'Kesin mayın' });
-                break;
+                // SADECE radar ile tespit edildiyse VEYA kesin analiz sonucu ise bayrakla
+                const isRadarConfirmed = this.knowledge.radarMines.has(key);
+                
+                if (isRadarConfirmed) {
+                    this.brain.myState.correctFlags++;
+                    actions.push({ type: 'flag', x, y, priority: 95, reason: 'Radar kesin mayın' });
+                    break;
+                } else {
+                    // Radar ile onaylı değilse, çift kontrol yap
+                    // Gerçekten kesin mi yoksa yanlış tespit mi?
+                    const isDefinitelyMine = this.verifyMineCell(x, y);
+                    if (isDefinitelyMine) {
+                        this.brain.myState.correctFlags++;
+                        actions.push({ type: 'flag', x, y, priority: 85, reason: 'Kesin mayın (doğrulanmış)' });
+                        break;
+                    }
+                }
             }
         }
         
