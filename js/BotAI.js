@@ -1,12 +1,15 @@
 /**
- * BotAI.js - TAM AKILLI YAPAY ZEKA
+ * BotAI.js - GLOBAL AKILLI YAPAY ZEKA
  * 
  * Özellikler:
+ * - BÜTÜN OYUNCULARDAN ÖĞRENEN TEK BİR YAPAY ZEKA
+ * - Supabase ile global öğrenme verisi senkronizasyonu
  * - Radar sonuçlarını görür ve mayınları işaretler
  * - Oyuncu tahtasını izler ve analiz eder
- * - Her oyundan öğrenir ve gelişir
  * - Güçleri stratejik olarak seçer
  * - Kendi kararlarını verir
+ * 
+ * v6 - GLOBAL AI: Herkes aynı AI ile oynuyor!
  */
 
 export class BotAI {
@@ -23,6 +26,12 @@ export class BotAI {
         
         // Zorluk ayarları
         this.config = this.getConfig(difficulty);
+        
+        // API endpoint
+        this.API_URL = '/api/botlearning';
+        
+        // Global öğrenme başlangıçta yüklenecek
+        this.globalLearningLoaded = false;
         
         // ==================== AKILLI BEYİN ====================
         this.brain = {
@@ -85,9 +94,13 @@ export class BotAI {
         };
         
         // ==================== ÖĞRENME SİSTEMİ ====================
+        // Önce localStorage'dan yükle (hızlı başlangıç için)
         this.learning = this.loadLearning();
         
-        console.log(`[AI] ${difficulty.toUpperCase()} | Win Rate: ${this.getWinRate()}%`);
+        // Sonra global veriyi async yükle (Supabase'den)
+        this.loadGlobalLearning();
+        
+        console.log(`[AI] ${difficulty.toUpperCase()} | Win Rate: ${this.getWinRate()}% | GLOBAL AI v6`);
     }
     
     // ==================== ZORLUK AYARLARI ====================
@@ -133,7 +146,7 @@ export class BotAI {
     // ==================== SAĞLAM ÖĞRENME SİSTEMİ ====================
     
     loadLearning() {
-        const STORAGE_KEY = 'mineduel_ai_v5';
+        const STORAGE_KEY = 'mineduel_ai_v6';
         
         try {
             const data = localStorage.getItem(STORAGE_KEY);
@@ -141,9 +154,10 @@ export class BotAI {
                 const parsed = JSON.parse(data);
                 
                 // Versiyon kontrolü - eski veriyi temizle
-                if (!parsed.version || parsed.version < 5) {
+                if (!parsed.version || parsed.version < 6) {
                     console.log('[AI] Eski öğrenme verisi tespit edildi, sıfırlanıyor...');
                     localStorage.removeItem(STORAGE_KEY);
+                    localStorage.removeItem('mineduel_ai_v5');
                     localStorage.removeItem('mineduel_ai_v4');
                     localStorage.removeItem('mineduel_bot_learning_v2');
                     return this.getDefaultLearning();
@@ -181,7 +195,7 @@ export class BotAI {
     
     getDefaultLearning() {
         return {
-            version: 5,  // Versiyon numarası
+            version: 6,  // Versiyon numarası - GLOBAL AI
             
             // Temel istatistikler
             stats: {
@@ -224,7 +238,7 @@ export class BotAI {
     }
     
     saveLearning() {
-        const STORAGE_KEY = 'mineduel_ai_v5';
+        const STORAGE_KEY = 'mineduel_ai_v6';
         
         try {
             // Kaydetmeden önce doğrula
@@ -238,6 +252,121 @@ export class BotAI {
             console.warn('[AI] Öğrenme verisi kaydedilemedi:', e);
         }
     }
+    
+    // ==================== GLOBAL ÖĞRENME (SUPABASE) ====================
+    
+    /**
+     * Supabase'den global öğrenme verisini yükle
+     * BÜTÜN OYUNCULARDAN TOPLANAN VERİ
+     */
+    async loadGlobalLearning() {
+        try {
+            const response = await fetch(this.API_URL);
+            if (!response.ok) {
+                console.warn('[AI] Global veri çekilemedi:', response.status);
+                return;
+            }
+            
+            const globalData = await response.json();
+            
+            // Global veriyi yerel ile birleştir
+            this.mergeGlobalLearning(globalData);
+            this.globalLearningLoaded = true;
+            
+            console.log(`[GLOBAL AI] Yüklendi | Toplam Oyun: ${globalData.stats?.gamesPlayed || 0} | Global Win Rate: ${this.calculateGlobalWinRate(globalData)}%`);
+        } catch (error) {
+            console.warn('[AI] Global öğrenme yüklenemedi:', error);
+        }
+    }
+    
+    /**
+     * Global veriyi yerel öğrenme ile birleştir
+     * Global veriye daha fazla ağırlık ver (daha fazla oyun = daha güvenilir)
+     */
+    mergeGlobalLearning(globalData) {
+        if (!globalData) return;
+        
+        const local = this.learning;
+        const global = globalData;
+        
+        // Global veri varsa ve daha fazla oyun oynanmışsa, ona ağır bas
+        const globalGames = global.stats?.gamesPlayed || 0;
+        const localGames = local.stats?.gamesPlayed || 0;
+        
+        if (globalGames > localGames * 2) {
+            // Global veri çok daha fazla, ona güven
+            const globalWeight = 0.7;
+            const localWeight = 0.3;
+            
+            // Güç etkinliklerini birleştir
+            for (const power of ['freeze', 'shield', 'radar', 'safeburst']) {
+                if (global.powers?.[power] && local.powers?.[power]) {
+                    local.powers[power].effectiveness = 
+                        global.powers[power].effectiveness * globalWeight + 
+                        local.powers[power].effectiveness * localWeight;
+                }
+            }
+            
+            // Strateji oranlarını birleştir
+            for (const strat of ['aggressive', 'defensive', 'balanced']) {
+                if (global.strategies?.[strat] && local.strategies?.[strat]) {
+                    local.strategies[strat].rate = 
+                        global.strategies[strat].rate * globalWeight + 
+                        local.strategies[strat].rate * localWeight;
+                }
+            }
+            
+            // Oyuncu kalıplarını birleştir
+            if (global.patterns) {
+                local.patterns.avgPlayerSpeed = 
+                    (global.patterns.avgPlayerSpeed || 5) * globalWeight + 
+                    local.patterns.avgPlayerSpeed * localWeight;
+                local.patterns.avgPlayerScore = 
+                    (global.patterns.avgPlayerScore || 200) * globalWeight + 
+                    local.patterns.avgPlayerScore * localWeight;
+            }
+            
+            console.log('[GLOBAL AI] Global veriler yerel ile birleştirildi (global ağırlıklı)');
+        }
+    }
+    
+    /**
+     * Oyun sonunda global öğrenmeyi güncelle (Supabase'e kaydet)
+     */
+    async syncToGlobal(gameResult) {
+        try {
+            const response = await fetch(this.API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    gameResult: {
+                        botWon: gameResult.won,
+                        draw: gameResult.draw,
+                        playerScore: gameResult.playerScore || 0,
+                        playerSpeed: this.brain.playerState.speed || 5,
+                        gameDuration: gameResult.duration || 60000,
+                        difficulty: this.difficulty,
+                        strategy: this.brain.mood,
+                        powersUsed: this.powers.used
+                    }
+                })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log(`[GLOBAL AI] Senkronize edildi | Toplam: ${result.totalGames} oyun | Global Win Rate: ${result.winRate}%`);
+            }
+        } catch (error) {
+            console.warn('[AI] Global senkronizasyon başarısız:', error);
+        }
+    }
+    
+    calculateGlobalWinRate(data) {
+        if (!data?.stats?.gamesPlayed || data.stats.gamesPlayed === 0) return 0;
+        return ((data.stats.wins / data.stats.gamesPlayed) * 100).toFixed(1);
+    }
+    
+    // ==================== GÜÇ KULLANIMI KAYDI ====================
     
     // Oyun sırasında güç kullanımını kaydet
     recordPowerUsage(power, result) {
@@ -321,10 +450,15 @@ export class BotAI {
         pat.avgPlayerScore = Math.round(pat.avgPlayerScore * (1 - weight) + playerScore * weight);
         pat.avgPlayerSpeed = pat.avgPlayerSpeed * (1 - weight) + playerSpeed * weight;
         
-        // Kaydet
+        // Yerel kaydet
         this.saveLearning();
         
-        console.log(`[AI] Öğrenme güncellendi | Kazanma: %${this.calculateWinRate(l)} | En iyi strateji: ${this.getBestStrategy()}`);
+        // 🌐 GLOBAL SENKRONIZASYON - Supabase'e gönder
+        // Tüm oyuncuların verilerini birleştir
+        this.syncToGlobal(gameResult);
+        
+        console.log(`[GLOBAL AI] Öğrenme güncellendi | Kazanma: %${this.calculateWinRate(l)} | En iyi strateji: ${this.getBestStrategy()}`);
+    }
     }
     
     // En iyi stratejiyi öğrenmeden al
