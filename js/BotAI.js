@@ -740,8 +740,63 @@ export class BotAI {
                     pat.avgPlayerSpeed = (pat.avgPlayerSpeed * 0.9) + (ps.speed * 0.1);
                 }
             }
+            
+            // Rakipten öğren: Oyuncu hızlıysa daha agresif ol
+            this.learnFromOpponent();
+            
         } catch (error) {
             console.warn('[AI] watchPlayer error:', error);
+        }
+    }
+    
+    // Rakipten öğrenme - oyuncu stratejisini analiz et
+    learnFromOpponent() {
+        try {
+            const ps = this.brain.playerState;
+            if (!ps) return;
+            
+            // Oyuncu çok hızlı puan alıyorsa, nerede oynuyor izle
+            if (ps.isOnStreak) {
+                // Oyuncu başarılı - rakip tahtasını analiz et
+                this.analyzeOpponentBoard();
+            }
+            
+            // Oyuncu skor farkını kapatıyorsa strateji değiştir
+            const scoreDiff = this.brain.gameState.scoreDiff;
+            if (scoreDiff > 50 && ps.speed > 8) {
+                // Oyuncu geliyor, savunmaya geç
+                this.brain.mood = 'defensive';
+            }
+        } catch (error) {
+            // Silent fail
+        }
+    }
+    
+    // Rakip tahtasını analiz et - oyuncunun açtığı güvenli bölgelerden öğren
+    analyzeOpponentBoard() {
+        try {
+            // Oyuncu tahtası game.playerBoard'da olabilir
+            const playerBoard = this.game?.board?.grid;
+            if (!playerBoard) return;
+            
+            // Oyuncunun açtığı büyük güvenli alanları not al
+            // Bu bilgiyi kendi stratejimizde kullanabiliriz
+            let openCells = 0;
+            for (let y = 0; y < this.gridSize; y++) {
+                for (let x = 0; x < this.gridSize; x++) {
+                    const cell = playerBoard[y]?.[x];
+                    if (cell?.isRevealed && !cell.isMine) {
+                        openCells++;
+                    }
+                }
+            }
+            
+            // Oyuncu bizden çok hücre açtıysa, daha hızlı oynamalıyız
+            if (openCells > this.brain.myState.progress * 0.8) {
+                this.brain.mood = 'aggressive';
+            }
+        } catch (error) {
+            // Silent fail
         }
     }
     
@@ -928,7 +983,7 @@ export class BotAI {
         }
     }
     
-    // ==================== 5. YANLIŞ BAYRAK TESPİTİ ====================
+    // ==================== 5. YANLIŞ BAYRAK TESPİTİ VE DÜZELTMESİ ====================
     
     detectWrongFlags() {
         this.knowledge.wrongFlags.clear();
@@ -943,24 +998,86 @@ export class BotAI {
                 // Güvenli olarak bilinen bir hücre bayraklıysa yanlış
                 if (this.knowledge.safeCells.has(key)) {
                     this.knowledge.wrongFlags.add(key);
+                    console.log(`[AI] Yanlış bayrak tespit: ${key} (güvenli hücre)`);
                     continue;
                 }
                 
-                // Komşu sayılardan kontrol
+                // Komşu sayılardan kontrol - daha sıkı analiz
                 const neighbors = this.getNeighbors(x, y);
+                let isSuspicious = false;
+                
                 for (const n of neighbors) {
                     const nc = this.board.grid[n.y][n.x];
                     if (!nc.isRevealed || nc.isMine || nc.neighborCount === 0) continue;
                     
                     const nNeighbors = this.getNeighbors(n.x, n.y);
                     let flagCount = 0;
+                    let hiddenCount = 0;
+                    
                     for (const nn of nNeighbors) {
-                        if (this.board.grid[nn.y][nn.x].isFlagged) flagCount++;
+                        const nnc = this.board.grid[nn.y][nn.x];
+                        if (nnc.isFlagged) flagCount++;
+                        if (!nnc.isRevealed && !nnc.isFlagged) hiddenCount++;
                     }
                     
+                    // Fazla bayrak varsa yanlış
                     if (flagCount > nc.neighborCount) {
                         this.knowledge.wrongFlags.add(key);
+                        console.log(`[AI] Yanlış bayrak tespit: ${key} (fazla bayrak: ${flagCount}/${nc.neighborCount})`);
+                        isSuspicious = true;
                         break;
+                    }
+                    
+                    // Eğer bu bayrak olmadan sayılar tutuyorsa, bayrak yanlış olabilir
+                    if (flagCount === nc.neighborCount && hiddenCount > 0) {
+                        // Bu durumda gizli hücreler güvenli olmalı
+                        for (const nn of nNeighbors) {
+                            const nnc = this.board.grid[nn.y][nn.x];
+                            if (!nnc.isRevealed && !nnc.isFlagged) {
+                                this.knowledge.safeCells.add(`${nn.x},${nn.y}`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Oyun ilerledikçe tahtayı yeniden analiz et
+        if (this.brain.myState.movesThisGame % 10 === 0) {
+            this.deepBoardAnalysis();
+        }
+    }
+    
+    // Derin tahta analizi - tüm tahtayı yeniden değerlendir
+    deepBoardAnalysis() {
+        // Tüm açık sayıları kontrol et
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.board?.grid?.[y]?.[x];
+                if (!cell?.isRevealed || cell.isMine || cell.neighborCount === 0) continue;
+                
+                const neighbors = this.getNeighbors(x, y);
+                let flagCount = 0;
+                let hiddenCells = [];
+                
+                for (const n of neighbors) {
+                    const nc = this.board.grid[n.y][n.x];
+                    if (nc.isFlagged) flagCount++;
+                    else if (!nc.isRevealed) hiddenCells.push(n);
+                }
+                
+                // Tüm mayınlar bulunmuşsa, kalan hücreler güvenli
+                if (flagCount === cell.neighborCount && hiddenCells.length > 0) {
+                    for (const h of hiddenCells) {
+                        this.knowledge.safeCells.add(`${h.x},${h.y}`);
+                    }
+                }
+                
+                // Kalan gizli hücre sayısı = kalan mayın sayısına eşitse, hepsi mayın
+                const remainingMines = cell.neighborCount - flagCount;
+                if (remainingMines === hiddenCells.length && hiddenCells.length > 0) {
+                    for (const h of hiddenCells) {
+                        this.knowledge.mineCells.add(`${h.x},${h.y}`);
                     }
                 }
             }
@@ -1071,13 +1188,20 @@ export class BotAI {
     decideAction() {
         const actions = [];
         
-        // En yüksek öncelik: Yanlış bayrağı düzelt
+        // Her hamlede tahtayı yeniden analiz et - hatları yakala
+        this.deepBoardAnalysis();
+        this.detectWrongFlags();
+        
+        // EN YÜKSEK ÖNCELİK: Yanlış bayrağı düzelt
         if (this.knowledge.wrongFlags.size > 0) {
             for (const key of this.knowledge.wrongFlags) {
                 const [x, y] = key.split(',').map(Number);
                 const cell = this.board?.grid?.[y]?.[x];
                 if (cell && cell.isFlagged && !cell.isRevealed) {
-                    actions.push({ type: 'unflag', x, y, priority: 100, reason: 'Yanlış bayrak düzelt' });
+                    console.log(`[AI] Yanlış bayrak düzeltiliyor: ${key}`);
+                    actions.push({ type: 'unflag', x, y, priority: 150, reason: 'Yanlış bayrak düzelt' });
+                    // Düzeltildikten sonra listeden çıkar
+                    this.knowledge.wrongFlags.delete(key);
                     break;
                 }
             }
