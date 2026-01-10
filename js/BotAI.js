@@ -709,7 +709,7 @@ export class BotAI {
     receiveRadarResults(mines) {
         if (!mines || mines.length === 0) return;
         
-        console.log(`[AI] 📡 Radar ${mines.length} mayın buldu!`);
+        console.log(`[AI] 📡 RADAR ${mines.length} MAYIN BULDU!`);
         
         for (const mine of mines) {
             const key = `${mine.x},${mine.y}`;
@@ -728,7 +728,7 @@ export class BotAI {
                     );
                     if (!alreadyPending) {
                         this.knowledge.pendingRadarMines.unshift({ x: mine.x, y: mine.y });
-                        console.log(`[AI] 🎯 Bayraklanacak mayın: (${mine.x},${mine.y})`);
+                        console.log(`[AI] 🎯 Bayraklanacak mayın eklendi: (${mine.x},${mine.y})`);
                     }
                 }
             }
@@ -737,6 +737,31 @@ export class BotAI {
         // Öğrenme: Radar mayın bulduysa kaydet
         if (this.learning.powers.radar) {
             this.learning.powers.radar.minesFound += mines.length;
+        }
+        
+        // HEMEN bayraklama yap - radar sonrası beklemeden
+        this.flagRadarMinesImmediately();
+    }
+    
+    // Radar mayınlarını hemen bayrakla
+    flagRadarMinesImmediately() {
+        console.log(`[AI] 🚩 Bekleyen radar mayınları: ${this.knowledge.pendingRadarMines.length}`);
+        
+        // Tüm bekleyen radar mayınlarını hemen bayrakla
+        const minesToFlag = [...this.knowledge.pendingRadarMines];
+        
+        for (const mine of minesToFlag) {
+            const cell = this.board?.grid?.[mine.y]?.[mine.x];
+            if (cell && !cell.isFlagged && !cell.isRevealed) {
+                console.log(`[AI] 🚩 BAYRAKLANIYOR: (${mine.x},${mine.y})`);
+                this.game?.makeBotFlag?.(mine.x, mine.y);
+                this.knowledge.flaggedCells.add(`${mine.x},${mine.y}`);
+            }
+            
+            // Listeden çıkar
+            this.knowledge.pendingRadarMines = this.knowledge.pendingRadarMines.filter(
+                m => !(m.x === mine.x && m.y === mine.y)
+            );
         }
     }
     
