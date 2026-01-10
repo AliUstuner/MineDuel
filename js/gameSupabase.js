@@ -7,6 +7,9 @@ import * as SupabaseClient from './supabaseClient.js';
 import { BotAI } from './BotAI.js';
 import { dataCollector } from './GameDataCollector.js';
 
+// DataCollector'ı global yap (konsol erişimi için)
+window.dataCollector = dataCollector;
+
 // ==================== CONFIGURATION ====================
 const CONFIG = {
     DIFFICULTIES: {
