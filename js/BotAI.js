@@ -427,12 +427,17 @@ export class BotAI {
             // Deneyim verilerini topla
             const experienceData = this.collectExperienceData(gameResult);
             
+            // Strateji mapping - desperate -> aggressive (veritabanında desperate yok)
+            let strategy = this.brain?.mood || 'balanced';
+            if (strategy === 'desperate') strategy = 'aggressive';
+            
             console.log('%c╔══════════════════════════════════════════════════════════╗', 'color: #00ff00; font-weight: bold;');
             console.log('%c║  🤖 GLOBAL AI - DENEYIM SENKRONIZASYONU BAŞLIYOR...      ║', 'color: #00ff00; font-weight: bold;');
             console.log('%c╚══════════════════════════════════════════════════════════╝', 'color: #00ff00; font-weight: bold;');
             console.log('[GLOBAL AI] 📤 Gönderilen veri:', {
                 url: this.API_URL,
                 won: gameResult.won,
+                strategy: strategy,
                 totalMoves: experienceData.totalMoves,
                 mistakes: experienceData.mistakeCount,
                 successes: experienceData.successCount
@@ -450,7 +455,7 @@ export class BotAI {
                         playerSpeed: this.brain?.playerState?.speed || 5,
                         gameDuration: gameResult.duration || 60000,
                         difficulty: this.difficulty,
-                        strategy: this.brain?.mood || 'balanced',
+                        strategy: strategy,
                         powersUsed: this.powers?.used || {},
                         // YENİ: Detaylı deneyim verisi
                         experience: experienceData

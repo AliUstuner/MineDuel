@@ -328,24 +328,33 @@ async function updateBotLearning(req, res) {
         }
     }
 
-    // Strategy
+    // Strategy - sadece geçerli stratejiler
     if (gameResult.strategy) {
+        const validStrategies = ['aggressive', 'defensive', 'balanced'];
         const strat = gameResult.strategy;
-        updates[`${strat}_games`] = (current[`${strat}_games`] || 0) + 1;
-        if (gameResult.botWon) {
-            updates[`${strat}_wins`] = (current[`${strat}_wins`] || 0) + 1;
+        
+        // Sadece geçerli stratejileri güncelle
+        if (validStrategies.includes(strat)) {
+            updates[`${strat}_games`] = (current[`${strat}_games`] || 0) + 1;
+            if (gameResult.botWon) {
+                updates[`${strat}_wins`] = (current[`${strat}_wins`] || 0) + 1;
+            }
+            const games = updates[`${strat}_games`] || current[`${strat}_games`] || 1;
+            const wins = updates[`${strat}_wins`] || current[`${strat}_wins`] || 0;
+            updates[`${strat}_rate`] = Math.max(0.1, Math.min(0.9, wins / games));
         }
-        const games = updates[`${strat}_games`] || current[`${strat}_games`] || 1;
-        const wins = updates[`${strat}_wins`] || current[`${strat}_wins`] || 0;
-        updates[`${strat}_rate`] = Math.max(0.1, Math.min(0.9, wins / games));
     }
 
-    // Difficulty
+    // Difficulty - sadece geçerli zorluklar
     if (gameResult.difficulty) {
+        const validDifficulties = ['easy', 'medium', 'hard', 'expert'];
         const diff = gameResult.difficulty;
-        updates[`${diff}_games`] = (current[`${diff}_games`] || 0) + 1;
-        if (gameResult.botWon) {
-            updates[`${diff}_wins`] = (current[`${diff}_wins`] || 0) + 1;
+        
+        if (validDifficulties.includes(diff)) {
+            updates[`${diff}_games`] = (current[`${diff}_games`] || 0) + 1;
+            if (gameResult.botWon) {
+                updates[`${diff}_wins`] = (current[`${diff}_wins`] || 0) + 1;
+            }
         }
     }
 
