@@ -65,7 +65,17 @@ export class BotAI {
             // Ruh hali - güç kararlarını etkiler
             mood: 'balanced',       // balanced, aggressive, defensive, desperate
             
-            stuckCount: 0
+            stuckCount: 0,
+            
+            // Hata takibi - kendi hatalarından öğrenme
+            mistakes: {
+                mineHits: [],       // Mayına basılan pozisyonlar
+                wrongFlags: [],     // Yanlış konulan bayraklar
+                missedMines: []     // Kaçırılan mayınlar
+            },
+            
+            // Son hamleler - pattern öğrenme
+            recentMoves: []
         };
         
         // ==================== BİLGİ DEPOSU ====================
@@ -125,20 +135,22 @@ export class BotAI {
                 playerWatchRate: 0.6
             },
             hard: {
-                thinkTime: { min: 500, max: 900 },
+                thinkTime: { min: 400, max: 700 },
                 accuracy: 0.88,
-                powerCooldown: 12000,
+                powerCooldown: 10000,
                 powerLimits: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
                 riskTolerance: 0.35,
-                playerWatchRate: 0.8
+                playerWatchRate: 1.0,
+                independentPlay: true
             },
             expert: {
-                thinkTime: { min: 250, max: 500 },
+                thinkTime: { min: 200, max: 400 },  // Daha hızlı düşünme
                 accuracy: 0.95,
-                powerCooldown: 8000,
-                powerLimits: { freeze: 2, shield: 1, radar: 3, safeburst: 2 },
-                riskTolerance: 0.40,
-                playerWatchRate: 0.95  // Oyuncuyu sürekli izler
+                powerCooldown: 6000,  // Daha sık güç kullanımı
+                powerLimits: { freeze: 2, shield: 2, radar: 3, safeburst: 2 },
+                riskTolerance: 0.45,
+                playerWatchRate: 1.0,  // Her zaman izle
+                independentPlay: true  // Oyuncudan bağımsız oyna
             }
         };
         return configs[difficulty] || configs.medium;
@@ -602,6 +614,15 @@ export class BotAI {
             isOnStreak: false, 
             estimatedProgress: 0 
         };
+        
+        // Hatalar - oyunlar arası öğrenme için KORU (sıfırlama)
+        if (!this.brain.mistakes) {
+            this.brain.mistakes = { mineHits: [], wrongFlags: [], missedMines: [] };
+        }
+        // recentMoves'u koru - pattern öğrenme için
+        if (!this.brain.recentMoves) {
+            this.brain.recentMoves = [];
+        }
         
         // Learning null ise default oluştur
         if (!this.learning || !this.learning.patterns) {
@@ -1299,20 +1320,24 @@ export class BotAI {
             actions.push(powerAction);
         }
         
-        // Düşük riskli hücre
+        // Düşük riskli hücre - hatalardan öğrenilmiş riskleri de kontrol et
         const lowRisk = this.findLowRiskCell();
         if (lowRisk) {
+            // Öğrenilmiş hatalardan bu hücrenin riski artmış mı kontrol et
+            const learnedRisk = this.knowledge.probabilities.get(`${lowRisk.x},${lowRisk.y}`) || 0;
+            const adjustedRisk = Math.max(lowRisk.prob, learnedRisk);
+            
             actions.push({
                 type: 'reveal',
                 x: lowRisk.x,
                 y: lowRisk.y,
-                priority: 60 - lowRisk.prob * 50,
-                reason: `Risk: %${(lowRisk.prob * 100).toFixed(0)}`
+                priority: 60 - adjustedRisk * 50,
+                reason: `Risk: %${(adjustedRisk * 100).toFixed(0)}`
             });
         }
         
-        // Rastgele hamle
-        const random = this.findRandomCell();
+        // Rastgele hamle - ama öğrenilmiş riskli bölgeleri önle
+        const random = this.findSafeRandomCell();
         if (random) {
             actions.push({ type: 'reveal', x: random.x, y: random.y, priority: 20, reason: 'Rastgele' });
         }
@@ -1329,6 +1354,34 @@ export class BotAI {
             const idx = Math.floor(Math.random() * Math.min(3, actions.length));
             return actions[idx];
         }
+    }
+    
+    // Güvenli rastgele hücre bul - öğrenilmiş riskli bölgeleri önle
+    findSafeRandomCell() {
+        const candidates = [];
+        
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.board?.grid?.[y]?.[x];
+                if (!cell || cell.isRevealed || cell.isFlagged) continue;
+                
+                const key = `${x},${y}`;
+                const learnedRisk = this.knowledge.probabilities.get(key) || 0;
+                
+                // Öğrenilmiş riskli hücrelerden kaçın
+                if (learnedRisk < 0.5 && !this.knowledge.mineCells.has(key)) {
+                    candidates.push({ x, y, risk: learnedRisk });
+                }
+            }
+        }
+        
+        if (candidates.length === 0) {
+            return this.findRandomCell();
+        }
+        
+        // En düşük riskli olanı seç
+        candidates.sort((a, b) => a.risk - b.risk);
+        return candidates[0];
     }
     
     selectBestPower() {
@@ -1473,20 +1526,130 @@ export class BotAI {
                 this.knowledge.pendingRadarMines = this.knowledge.pendingRadarMines.filter(
                     m => !(m.x === action.x && m.y === action.y)
                 );
+                // Hamleyi kaydet
+                this.recordMove(action);
                 break;
                 
             case 'reveal':
                 const result = this.game?.makeBotMove?.(action.x, action.y);
                 this.brain.myState.movesThisGame++;
+                
+                // HATA ÖĞRENMESİ: Mayına bastıysak kaydet ve öğren
                 if (result?.hitMine) {
                     this.brain.myState.minesHit++;
+                    this.learnFromMistake(action.x, action.y, 'mine_hit');
+                    console.log(`[AI] HATA ÖĞRENMESİ: Mayına basıldı (${action.x},${action.y}) - Bu pattern kaydedildi`);
                 }
+                
+                // Hamleyi kaydet
+                this.recordMove(action, result);
                 break;
                 
             case 'power':
                 this.usePower(action.power);
                 break;
         }
+    }
+    
+    // Hamleyi kaydet - pattern öğrenme için
+    recordMove(action, result = null) {
+        const move = {
+            x: action.x,
+            y: action.y,
+            type: action.type,
+            reason: action.reason,
+            timestamp: Date.now(),
+            success: result ? !result.hitMine : true,
+            neighborState: this.getNeighborState(action.x, action.y)
+        };
+        
+        this.brain.recentMoves.push(move);
+        
+        // Son 50 hamleyi tut
+        if (this.brain.recentMoves.length > 50) {
+            this.brain.recentMoves.shift();
+        }
+    }
+    
+    // Komşu durumunu al - pattern tanıma için
+    getNeighborState(x, y) {
+        const neighbors = this.getNeighbors(x, y);
+        const state = {
+            revealed: 0,
+            flagged: 0,
+            hidden: 0,
+            numbers: []
+        };
+        
+        for (const n of neighbors) {
+            const cell = this.board?.grid?.[n.y]?.[n.x];
+            if (!cell) continue;
+            
+            if (cell.isRevealed) {
+                state.revealed++;
+                if (cell.neighborCount > 0) {
+                    state.numbers.push(cell.neighborCount);
+                }
+            } else if (cell.isFlagged) {
+                state.flagged++;
+            } else {
+                state.hidden++;
+            }
+        }
+        
+        return state;
+    }
+    
+    // Hatadan öğren - benzer durumları gelecekte önle
+    learnFromMistake(x, y, mistakeType) {
+        const mistake = {
+            x, y,
+            type: mistakeType,
+            neighborState: this.getNeighborState(x, y),
+            gamePhase: this.brain.gameState.phase,
+            mood: this.brain.mood,
+            timestamp: Date.now()
+        };
+        
+        this.brain.mistakes.mineHits.push(mistake);
+        
+        // Son 20 hatayı tut
+        if (this.brain.mistakes.mineHits.length > 20) {
+            this.brain.mistakes.mineHits.shift();
+        }
+        
+        // Bu durumu risk haritasına ekle
+        const key = `${x},${y}`;
+        this.knowledge.mineCells.add(key);
+        
+        // Benzer komşu yapısına sahip hücreleri riskli olarak işaretle
+        this.markSimilarCellsAsRisky(mistake.neighborState);
+    }
+    
+    // Benzer hücreleri riskli olarak işaretle
+    markSimilarCellsAsRisky(mistakeNeighborState) {
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const cell = this.board?.grid?.[y]?.[x];
+                if (!cell || cell.isRevealed || cell.isFlagged) continue;
+                
+                const neighborState = this.getNeighborState(x, y);
+                
+                // Benzer yapıya sahipse risk olarak işaretle
+                if (this.isSimilarNeighborState(neighborState, mistakeNeighborState)) {
+                    const currentProb = this.knowledge.probabilities.get(`${x},${y}`) || 0.5;
+                    this.knowledge.probabilities.set(`${x},${y}`, Math.min(0.9, currentProb + 0.2));
+                }
+            }
+        }
+    }
+    
+    // Komşu durumları karşılaştır
+    isSimilarNeighborState(state1, state2) {
+        // Benzer sayıda açık/gizli/bayraklı hücre varsa benzer kabul et
+        return Math.abs(state1.revealed - state2.revealed) <= 1 &&
+               Math.abs(state1.hidden - state2.hidden) <= 1 &&
+               state1.numbers.some(n => state2.numbers.includes(n));
     }
     
     usePower(power) {
