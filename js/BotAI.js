@@ -348,6 +348,11 @@ export class BotAI {
      */
     async syncToGlobal(gameResult) {
         try {
+            console.log('[GLOBAL AI] Senkronizasyon başlıyor...', {
+                url: this.API_URL,
+                gameResult: gameResult
+            });
+            
             const response = await fetch(this.API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -356,21 +361,26 @@ export class BotAI {
                         botWon: gameResult.won,
                         draw: gameResult.draw,
                         playerScore: gameResult.playerScore || 0,
-                        playerSpeed: this.brain.playerState.speed || 5,
+                        playerSpeed: this.brain?.playerState?.speed || 5,
                         gameDuration: gameResult.duration || 60000,
                         difficulty: this.difficulty,
-                        strategy: this.brain.mood,
-                        powersUsed: this.powers.used
+                        strategy: this.brain?.mood || 'balanced',
+                        powersUsed: this.powers?.used || {}
                     }
                 })
             });
             
+            console.log('[GLOBAL AI] API Response status:', response.status);
+            
             if (response.ok) {
                 const result = await response.json();
-                console.log(`[GLOBAL AI] Senkronize edildi | Toplam: ${result.totalGames} oyun | Global Win Rate: ${result.winRate}%`);
+                console.log(`[GLOBAL AI] ✅ Senkronize edildi | Toplam: ${result.totalGames} oyun | Global Win Rate: ${result.winRate}%`);
+            } else {
+                const errorText = await response.text();
+                console.error('[GLOBAL AI] ❌ API Hatası:', response.status, errorText);
             }
         } catch (error) {
-            console.warn('[AI] Global senkronizasyon başarısız:', error);
+            console.error('[GLOBAL AI] ❌ Senkronizasyon başarısız:', error);
         }
     }
     
