@@ -1,4 +1,10 @@
-import { supabaseAdmin } from '../config/supabase.js';
+import { createClient } from '@supabase/supabase-js';
+
+// Supabase Admin Client (server-side)
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 /**
  * Training Data API
