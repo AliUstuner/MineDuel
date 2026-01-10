@@ -1,5 +1,5 @@
-import { supabaseAdmin } from '../config/supabase.js';
-import { verifyToken } from '../middleware/auth.js';
+import { supabaseAdmin } from '../lib/supabase.js';
+import { verifyToken } from '../lib/authMiddleware.js';
 
 // In-memory matchmaking queue (for serverless, consider using Redis/Supabase Realtime in production)
 const matchmakingQueues = {

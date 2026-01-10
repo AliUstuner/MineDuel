@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../config/supabase.js';
+import { supabaseAdmin } from '../lib/supabase.js';
 
 const GLOBAL_BOT_ID = '00000000-0000-0000-0000-000000000001';
 

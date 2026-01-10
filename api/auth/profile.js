@@ -1,5 +1,5 @@
-import { supabaseAdmin } from '../config/supabase.js';
-import { verifyToken } from '../middleware/auth.js';
+import { supabaseAdmin } from '../../lib/supabase.js';
+import { verifyToken } from '../../lib/authMiddleware.js';
 
 export default async function handler(req, res) {
     // CORS headers
