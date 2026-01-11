@@ -673,6 +673,15 @@ export class BotCore {
             return false;
         }
         
+        // Oyundaki gerçek güç haklarını al
+        const gameUsesLeft = this.game?.botPowerUsesLeft || {};
+        
+        // Hangi güçler kullanılabilir?
+        const canUseFreeze = (gameUsesLeft.freeze || 0) > 0 && myScore >= costs.freeze;
+        const canUseSafeburst = (gameUsesLeft.safeburst || 0) > 0 && myScore >= costs.safeburst;
+        const canUseShield = (gameUsesLeft.shield || 0) > 0 && myScore >= costs.shield;
+        const canUseRadar = (gameUsesLeft.radar || 0) > 0 && myScore >= costs.radar;
+        
         // Son kullanılan gücü takip et - aynı gücü üst üste kullanma
         const lastPower = this.powerUsage.lastPowerUsed || null;
         
@@ -681,29 +690,40 @@ export class BotCore {
         
         if (isBehind && isCriticalPhase) {
             // Gerideyiz - rakibi durdur veya hızlı puan al
-            if (scoreDiff < -50) {
-                selectedPower = lastPower !== 'safeburst' ? 'safeburst' : 'freeze';
-            } else {
-                selectedPower = lastPower !== 'freeze' ? 'freeze' : 'safeburst';
+            if (scoreDiff < -50 && canUseSafeburst && lastPower !== 'safeburst') {
+                selectedPower = 'safeburst';
+            } else if (canUseFreeze && lastPower !== 'freeze') {
+                selectedPower = 'freeze';
+            } else if (canUseSafeburst && lastPower !== 'safeburst') {
+                selectedPower = 'safeburst';
             }
         } else if (isAhead && isCriticalPhase) {
             // Öndeyiz - kendimizi koru
-            selectedPower = 'shield';
+            if (canUseShield) {
+                selectedPower = 'shield';
+            }
         } else if (isStuck) {
             // Sıkıştık - mayın bul
-            selectedPower = 'radar';
+            if (canUseRadar) {
+                selectedPower = 'radar';
+            }
         }
         
         if (!selectedPower) {
             return false;
         }
         
-        // Seçilen gücü kullanabilir miyiz kontrol et
+        // Seçilen gücü kullanabilir miyiz kontrol et - OYUNUN GERÇEK DEĞERLERİNİ KULLAN
         const cost = costs[selectedPower];
-        const limit = this.config.getPowerLimit(selectedPower);
-        const used = this.powerUsage[selectedPower] || 0;
         
-        if (myScore < cost || used >= limit) {
+        // Oyundaki gerçek güç haklarını kontrol et
+        const gameUsesLeft = this.game?.botPowerUsesLeft;
+        if (gameUsesLeft && gameUsesLeft[selectedPower] <= 0) {
+            console.log(`[BotCore] Power ${selectedPower} has no uses left in game`);
+            return false;
+        }
+        
+        if (myScore < cost) {
             return false;
         }
         
