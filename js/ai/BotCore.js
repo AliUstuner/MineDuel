@@ -638,8 +638,8 @@ export class BotCore {
                                  (initialUses - (gameUsesLeft.radar || 0)) +
                                  (initialUses - (gameUsesLeft.safeburst || 0));
         
-        // Maç başına max 1 güç kullan!
-        if (totalUsedInGame >= 1) {
+        // Maç başına max 2 güç kullan!
+        if (totalUsedInGame >= 2) {
             console.log(`[BotCore] Power limit reached: ${totalUsedInGame} powers used this match`);
             return false;
         }
