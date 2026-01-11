@@ -110,23 +110,9 @@ export class DeterministicLayer {
      * Check if analysis is needed (cache mechanism)
      */
     analyzeIfNeeded() {
-        const now = Date.now();
-        
-        // 100ms içinde tekrar analiz yapma
-        if (this.analysisValid && now - this.lastAnalysisTime < 100) {
-            return;
-        }
-        
-        // Board değişti mi kontrol et
-        const currentState = this.getBoardStateHash();
-        if (this.analysisValid && currentState === this.lastBoardState) {
-            return;
-        }
-        
+        // Her zaman analiz yap - cache sorun çıkarıyor
+        // Board state sürekli değişiyor, cache güvenilir değil
         this.analyze();
-        this.lastAnalysisTime = now;
-        this.lastBoardState = currentState;
-        this.analysisValid = true;
     }
     
     /**
@@ -162,7 +148,10 @@ export class DeterministicLayer {
      * Main analysis - runs all deduction techniques
      */
     analyze() {
-        if (!this.bot.board?.grid) return;
+        if (!this.bot.board?.grid) {
+            console.warn('[DeterministicLayer] No board grid!');
+            return;
+        }
         
         // Reset stats for THIS analysis (not cumulative!)
         this.stats = {
@@ -180,6 +169,12 @@ export class DeterministicLayer {
         
         // 1. Constraint'leri oluştur
         this.buildConstraints();
+        
+        // Debug: kaç constraint oluştu?
+        if (this.constraints.length === 0) {
+            console.warn('[DeterministicLayer] No constraints built! Checking board...');
+            this.debugBoard();
+        }
         
         // 2. Basit kuralları uygula (mineCount = 0 veya cells.size)
         this.applySimpleRules();
@@ -207,6 +202,35 @@ export class DeterministicLayer {
         console.log(`[DeterministicLayer] Analysis: ${this.safeCells.size} safe, ${this.mineCells.size} mines | ` +
                     `Simple: ${this.stats.simpleDeductions}, Pattern: ${this.stats.patternDeductions}, ` +
                     `Subset: ${this.stats.subsetDeductions}, CrossRef: ${this.stats.crossRefDeductions}`);
+    }
+    
+    /**
+     * Debug board state
+     */
+    debugBoard() {
+        const gridSize = this.bot.gridSize;
+        let revealedCount = 0;
+        let numberedCount = 0;
+        let hiddenCount = 0;
+        let flaggedCount = 0;
+        
+        for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
+                const cell = this.bot.board.grid[y]?.[x];
+                if (!cell) continue;
+                
+                if (cell.isRevealed) {
+                    revealedCount++;
+                    if (cell.neighborCount > 0) numberedCount++;
+                } else if (cell.isFlagged) {
+                    flaggedCount++;
+                } else {
+                    hiddenCount++;
+                }
+            }
+        }
+        
+        console.log(`[DeterministicLayer] Board state: ${revealedCount} revealed (${numberedCount} numbered), ${hiddenCount} hidden, ${flaggedCount} flagged`);
     }
     
     /**

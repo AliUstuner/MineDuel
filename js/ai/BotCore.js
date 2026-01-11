@@ -399,26 +399,8 @@ export class BotCore {
             });
         }
         
-        // ÖNCELİK 3: Şüpheli bayrakları kaldır (SADECE başka hamle yoksa!)
-        // Ve sadece gerçekten sorunlu olduğundan eminsek
-        if (candidates.length === 0 && suspiciousFlags.length > 0) {
-            for (const cell of suspiciousFlags) {
-                const key = `${cell.x},${cell.y}`;
-                if (this.visibleState.unflagCooldown.has(key)) continue;
-                if (this.visibleState.flaggedCells.has(key)) {
-                    // Sadece 1 tane unflag yap, sonra bekle
-                    candidates.push({
-                        type: 'unflag',
-                        x: cell.x,
-                        y: cell.y,
-                        priority: 90,
-                        reason: 'Fix: Removing suspicious flag',
-                        layer: 'deterministic'
-                    });
-                    break; // Sadece 1 tane!
-                }
-            }
-        }
+        // NOT: Şüpheli bayrak kaldırma devre dışı - sorun çıkarıyordu
+        // Bot artık sadece kesin bildiği mayınları bayraklıyor
         
         // Eğer deterministic hamle varsa, güç kullanımını da değerlendir
         if (candidates.length > 0) {
