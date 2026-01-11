@@ -608,12 +608,11 @@ export class BotCore {
     }
     
     /**
-     * Try to use a random power (called every think cycle)
+     * Try to use a smart power (called every think cycle)
      * Returns true if power was used
      */
     tryRandomPowerUsage() {
         const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
-        const powers = ['freeze', 'shield', 'radar', 'safeburst'];
         
         // Cooldown kontrolü - son güç kullanımından beri geçen süre
         const timeSinceLastPower = Date.now() - this.powerUsage.lastUseTime;
@@ -626,56 +625,140 @@ export class BotCore {
             return false;
         }
         
-        // %30 şansla güç kullanmayı dene
-        if (Math.random() > 0.30) {
+        // %25 şansla güç kullanmayı dene
+        if (Math.random() > 0.25) {
             return false;
         }
         
         // Mevcut puanı al
         const myScore = this.game?.opponentScore || 0;
+        const opponentScore = this.game?.score || 0;
+        const scoreDiff = myScore - opponentScore;
         
-        // Kullanılabilecek güçleri filtrele
-        const availablePowers = powers.filter(power => {
+        // Son kullanılan gücü takip et - aynı gücü üst üste kullanma
+        const lastPower = this.powerUsage.lastPowerUsed || null;
+        
+        // Duruma göre güç seç
+        const selectedPower = this.selectSmartPower(myScore, scoreDiff, lastPower, costs);
+        
+        if (!selectedPower) {
+            return false;
+        }
+        
+        const cost = costs[selectedPower];
+        
+        console.log(`[BotCore] 🎯 SMART POWER: ${selectedPower} (cost: ${cost}, score: ${myScore}, diff: ${scoreDiff})`);
+        
+        // Gücü kullan
+        const result = this.game?.useBotPower?.(selectedPower, cost);
+        
+        if (result) {
+            this.powerUsage[selectedPower]++;
+            this.powerUsage.lastUseTime = Date.now();
+            this.powerUsage.lastPowerUsed = selectedPower;
+            console.log(`[BotCore] ✅ POWER SUCCESS: ${selectedPower.toUpperCase()}`);
+            return true;
+        } else {
+            console.log(`[BotCore] ❌ POWER FAILED: ${selectedPower}`);
+            return false;
+        }
+    }
+    
+    /**
+     * Select the best power based on game situation
+     */
+    selectSmartPower(myScore, scoreDiff, lastPower, costs) {
+        const availablePowers = [];
+        
+        // Her güç için uygunluk ve öncelik hesapla
+        const powerPriorities = {
+            freeze: 0,
+            shield: 0,
+            radar: 0,
+            safeburst: 0
+        };
+        
+        // Kullanılabilir güçleri kontrol et
+        for (const power of Object.keys(costs)) {
             const cost = costs[power];
             const limit = this.config.getPowerLimit(power);
             const used = this.powerUsage[power] || 0;
             
-            // Yeterli puan var mı?
-            if (myScore < cost) {
-                return false;
+            // Yeterli puan ve limit kontrolü
+            if (myScore >= cost && used < limit) {
+                availablePowers.push(power);
             }
-            
-            // Limit dolmamış mı?
-            if (used >= limit) {
-                return false;
-            }
-            
-            return true;
-        });
+        }
         
         if (availablePowers.length === 0) {
-            console.log(`[BotCore] No available powers - score: ${myScore}`);
-            return false;
+            return null;
         }
         
-        // Rastgele bir güç seç
-        const randomPower = availablePowers[Math.floor(Math.random() * availablePowers.length)];
-        const cost = costs[randomPower];
+        // Son kullanılan gücü listeden çıkar (aynı gücü üst üste kullanma)
+        const filteredPowers = availablePowers.filter(p => p !== lastPower);
+        const powersToChoose = filteredPowers.length > 0 ? filteredPowers : availablePowers;
         
-        console.log(`[BotCore] 🎲 RANDOM POWER: Trying ${randomPower} (cost: ${cost}, score: ${myScore})`);
-        
-        // Gücü kullan
-        const result = this.game?.useBotPower?.(randomPower, cost);
-        
-        if (result) {
-            this.powerUsage[randomPower]++;
-            this.powerUsage.lastUseTime = Date.now();
-            console.log(`[BotCore] ✅ RANDOM POWER SUCCESS: ${randomPower.toUpperCase()}`);
-            return true;
-        } else {
-            console.log(`[BotCore] ❌ RANDOM POWER FAILED: ${randomPower}`);
-            return false;
+        // Duruma göre öncelik belirle
+        for (const power of powersToChoose) {
+            let priority = 10; // Base priority
+            
+            if (power === 'freeze') {
+                // FREEZE: Rakip öndeyken veya yakınken çok değerli
+                if (scoreDiff < -20) priority += 40;      // Çok gerideyiz - rakibi durdur
+                else if (scoreDiff < 0) priority += 25;   // Biraz gerideyiz
+                else if (scoreDiff < 20) priority += 15;  // Yakın maç
+                // Oyun ortası/sonu daha değerli
+                if (this.gameState.phase === 'mid') priority += 10;
+                if (this.gameState.phase === 'late') priority += 20;
+                if (this.gameState.phase === 'critical') priority += 30;
+            }
+            
+            else if (power === 'shield') {
+                // SHIELD: Öndeyken koruma, gerideyken risk alırken
+                if (scoreDiff > 30) priority += 40;       // Çok öndeyiz - koru
+                else if (scoreDiff > 10) priority += 25;  // Öndeyiz
+                else if (scoreDiff < -20) priority += 20; // Gerideyiz, risk alacağız
+                // Oyun sonu daha değerli
+                if (this.gameState.phase === 'late') priority += 15;
+                if (this.gameState.phase === 'critical') priority += 25;
+            }
+            
+            else if (power === 'radar') {
+                // RADAR: Her zaman faydalı, özellikle erken oyunda
+                priority += 20; // Base bonus - radar her zaman iyi
+                if (this.gameState.phase === 'early') priority += 25;
+                if (this.gameState.phase === 'mid') priority += 15;
+                // Güvenli hamle yoksa çok değerli
+                const safeCells = this.deterministicLayer.findSafeCells();
+                if (safeCells.length === 0) priority += 30;
+            }
+            
+            else if (power === 'safeburst') {
+                // SAFEBURST: Gerideyken puan kapmak için
+                if (scoreDiff < -30) priority += 45;      // Çok gerideyiz
+                else if (scoreDiff < -10) priority += 30; // Gerideyiz
+                else if (scoreDiff < 10) priority += 15;  // Yakın maç
+                // Oyun sonu acil puan lazım
+                if (this.gameState.phase === 'late') priority += 20;
+                if (this.gameState.phase === 'critical') priority += 35;
+            }
+            
+            powerPriorities[power] = priority;
         }
+        
+        // En yüksek öncelikli gücü seç
+        let bestPower = null;
+        let bestPriority = 0;
+        
+        for (const power of powersToChoose) {
+            if (powerPriorities[power] > bestPriority) {
+                bestPriority = powerPriorities[power];
+                bestPower = power;
+            }
+        }
+        
+        console.log(`[BotCore] Power priorities:`, powerPriorities);
+        return bestPower;
     }
     
     /**
