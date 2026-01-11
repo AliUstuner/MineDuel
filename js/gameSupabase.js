@@ -4,7 +4,7 @@
  */
 
 import * as SupabaseClient from './supabaseClient.js';
-import { BotAI } from './BotAI.js';
+import { BotCore } from './ai/BotCore.js';
 import { dataCollector } from './GameDataCollector.js';
 
 // DataCollector'ı global yap (konsol erişimi için)
@@ -1104,9 +1104,9 @@ class GameClient {
             }
             
             this.botBoard = this.opponentBoard;
-            this.bot = new BotAI(this, botDifficulty);
+            this.bot = new BotCore(this, botDifficulty);
             
-            console.log('[BOT] Bot initialized with difficulty:', botDifficulty);
+            console.log('[BOT] BotCore v9 initialized with difficulty:', botDifficulty);
             console.log('[BOT] botBoard:', this.botBoard ? 'OK' : 'NULL');
             
             this.bot.start(this.botBoard, gridSize);
@@ -2480,8 +2480,8 @@ class GameClient {
             scoreChange: points,
             currentScore: this.opponentScore,
             opponentScore: this.score,
-            // Bot'un karar bilgisi
-            wasKnownSafe: this.bot?.knowledge?.safeCells?.has(`${x},${y}`) || false,
+            // Bot'un karar bilgisi - yeni BotCore için uyarlandı
+            wasKnownSafe: this.bot?.visibleState?.revealedCells?.has(`${x},${y}`) || false,
             includeSnapshot: revealed.length > 3 || hitMine, // Önemli anlarda snapshot
             board: this.botBoard
         });
@@ -2723,9 +2723,9 @@ class GameClient {
             scoreBefore: scoreBefore,
             scoreAfter: this.opponentScore,
             opponentScore: this.score,
-            // Bot'un güç kullanım nedeni
-            reason: this.bot?.powers?.scores?.[power] ? 
-                `Score: ${this.bot.powers.scores[power]} | Mood: ${this.bot?.brain?.mood}` : null,
+            // Bot'un güç kullanım nedeni - yeni BotCore için uyarlandı
+            reason: this.bot?.powerUsage?.[power] ? 
+                `Used: ${this.bot.powerUsage[power]} | Phase: ${this.bot?.gameState?.phase}` : null,
             // Ek efekt bilgisi
             effect: power === 'radar' ? { minesFound: 3 } : 
                    power === 'safeburst' ? { cellsRevealed: 3 } : null,

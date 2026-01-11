@@ -174,11 +174,29 @@ export class BotCore {
     
     /**
      * Freeze the bot temporarily (opponent power)
+     * @param {number} durationMs - Duration in milliseconds
      */
     freeze(durationMs) {
         this.isFrozen = true;
         this.frozenUntil = Date.now() + durationMs;
         console.log(`[BotCore] Frozen for ${durationMs}ms`);
+    }
+    
+    /**
+     * Legacy compatibility: endGameLearning wrapper
+     * Called by gameSupabase.js
+     * @param {boolean} botWon - Did the bot win?
+     * @param {number} playerScore - Player's final score
+     * @param {number} botScore - Bot's final score
+     * @param {boolean} isDraw - Was it a draw?
+     */
+    endGameLearning(botWon, playerScore, botScore, isDraw = false) {
+        this.endGame({
+            botWon,
+            draw: isDraw,
+            botScore,
+            playerScore
+        });
     }
     
     // ==================== MAIN THINKING LOOP ====================
