@@ -618,8 +618,8 @@ export class BotCore {
         // Cooldown kontrolü - son güç kullanımından beri geçen süre
         const timeSinceLastPower = Date.now() - this.powerUsage.lastUseTime;
         
-        // Uzun cooldown - güçler arası en az 15 saniye
-        const effectiveCooldown = this.powerUsage.lastUseTime === 0 ? 15000 : 15000;
+        // Çok uzun cooldown - güçler arası en az 25 saniye
+        const effectiveCooldown = this.powerUsage.lastUseTime === 0 ? 20000 : 25000;
         
         if (timeSinceLastPower < effectiveCooldown) {
             return false;
@@ -630,24 +630,24 @@ export class BotCore {
         const opponentScore = this.game?.score || 0;
         const scoreDiff = myScore - opponentScore;
         
-        // Toplam güç kullanım limiti - maç başına max 2-3 güç
+        // Toplam güç kullanım limiti - maç başına max 1-2 güç
         const totalPowerUsed = (this.powerUsage.freeze || 0) + 
                                (this.powerUsage.shield || 0) + 
                                (this.powerUsage.radar || 0) + 
                                (this.powerUsage.safeburst || 0);
-        if (totalPowerUsed >= 3) {
+        if (totalPowerUsed >= 2) {
             return false;
         }
         
         // AKILLI KARAR: Sadece gerçekten gerektiğinde güç kullan
         // Puan kaybetmek istemiyoruz - güç kullanmak puan kaybettirir!
         
-        // Durum 1: Çok gerideyiz ve kritik/late faz - FREEZE veya SAFEBURST mantıklı
-        const isBehind = scoreDiff < -30;
-        const isCriticalPhase = this.gameState.phase === 'critical' || this.gameState.phase === 'late';
+        // Durum 1: ÇOK gerideyiz ve SADECE kritik faz - FREEZE veya SAFEBURST mantıklı
+        const isBehind = scoreDiff < -50;  // Daha büyük fark gerekli
+        const isCriticalPhase = this.gameState.phase === 'critical';  // Sadece kritik faz
         
         // Durum 2: Çok öndeyiz ve oyun sonuna yaklaşıyor - SHIELD mantıklı
-        const isAhead = scoreDiff > 50;
+        const isAhead = scoreDiff > 80;  // Daha büyük fark gerekli
         
         // Durum 3: Güvenli hamle yok ve sıkıştık - RADAR mantıklı
         const safeCells = this.deterministicLayer.findSafeCells();
@@ -655,20 +655,20 @@ export class BotCore {
         
         // Sadece bu durumlardan biri varsa güç kullanmayı düşün
         const shouldConsiderPower = (isBehind && isCriticalPhase) || 
-                                    (isAhead && isCriticalPhase) || 
-                                    (isStuck && this.gameState.phase !== 'early');
+                                    (isAhead && isCriticalPhase);
+        // NOT: isStuck durumunu kaldırdık - radar çok fazla kullanılıyordu
         
         if (!shouldConsiderPower) {
             return false;
         }
         
-        // Bu durumda bile sadece %30 şansla güç kullan
-        if (Math.random() > 0.30) {
+        // Bu durumda bile sadece %20 şansla güç kullan
+        if (Math.random() > 0.20) {
             return false;
         }
         
         // Minimum puan eşiği - güç kullandıktan sonra yeterli puan kalmalı
-        const minScoreForPower = 100; // En az 100 puan olmalı
+        const minScoreForPower = 150; // En az 150 puan olmalı
         if (myScore < minScoreForPower) {
             return false;
         }

@@ -656,9 +656,22 @@ export class GameDataCollector {
             
             console.log(`[DataCollector] 💾 Saved locally | Total: ${allGames.length} games`);
         } catch (e) {
-            console.error('[DataCollector] Save error:', e);
-            // Yer yoksa eski verileri temizle
-            this.pruneOldData();
+            // QuotaExceededError - localStorage dolu
+            if (e.name === 'QuotaExceededError' || e.message.includes('quota')) {
+                console.warn('[DataCollector] Storage quota exceeded, cleaning up...');
+                this.pruneOldData();
+                // Tekrar dene
+                try {
+                    const minimalGames = this.getAllGames().slice(-10); // Sadece son 10 oyun
+                    localStorage.setItem(this.storageKey, JSON.stringify(minimalGames));
+                } catch (e2) {
+                    // Hala olmuyor, tamamen temizle
+                    localStorage.removeItem(this.storageKey);
+                    console.warn('[DataCollector] Storage cleared completely');
+                }
+            } else {
+                console.error('[DataCollector] Save error:', e);
+            }
         }
     }
     
@@ -745,14 +758,15 @@ export class GameDataCollector {
     pruneOldData() {
         try {
             let allGames = this.getAllGames();
-            // Yarısını sil, kalitelileri koru
+            // Sadece en iyi 10 oyunu tut
             allGames.sort((a, b) => (b.qualityScore || 0) - (a.qualityScore || 0));
-            allGames = allGames.slice(0, Math.floor(this.maxStoredGames / 2));
+            allGames = allGames.slice(0, 10);
             localStorage.setItem(this.storageKey, JSON.stringify(allGames));
-            console.log('[DataCollector] Old data pruned');
+            console.log('[DataCollector] Old data pruned, kept 10 best games');
         } catch (e) {
             // Hala yer yoksa hepsini sil
             localStorage.removeItem(this.storageKey);
+            console.warn('[DataCollector] All data cleared due to storage issues');
         }
     }
     
