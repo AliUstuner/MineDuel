@@ -335,10 +335,10 @@ export class BotCore {
     decide() {
         const candidates = [];
         
-        // Cooldown temizliği (5 saniyeden eski olanları sil)
+        // Cooldown temizliği (10 saniyeden eski olanları sil)
         const now = Date.now();
         for (const [key, time] of this.visibleState.unflagCooldown) {
-            if (now - time > 5000) {
+            if (now - time > 10000) {
                 this.visibleState.unflagCooldown.delete(key);
                 this.visibleState.recentlyUnflagged.delete(key);
             }
@@ -355,25 +355,10 @@ export class BotCore {
         // YENİ ÖNCELİK SİSTEMİ: BAYRAK > REVEAL > GÜÇ
         // ======================================================================
         
-        // ÖNCELİK 1: Şüpheli bayrakları kaldır (en yüksek - yanlış bayrak analizi bozar)
-        for (const cell of suspiciousFlags) {
-            const key = `${cell.x},${cell.y}`;
-            if (this.visibleState.unflagCooldown.has(key)) continue;
-            if (this.visibleState.flaggedCells.has(key)) {
-                candidates.push({
-                    type: 'unflag',
-                    x: cell.x,
-                    y: cell.y,
-                    priority: 105,
-                    reason: 'Fix: Removing suspicious flag',
-                    layer: 'deterministic'
-                });
-            }
-        }
-        
-        // ÖNCELİK 2: Kesin mayınları bayrakla (bayrak koymak reveal'den önce!)
+        // ÖNCELİK 1: Kesin mayınları bayrakla (EN ÖNEMLİ!)
         for (const cell of mineCells) {
             const key = `${cell.x},${cell.y}`;
+            // Yakın zamanda unflag edilen hücreyi tekrar bayraklama
             if (this.visibleState.recentlyUnflagged.has(key)) continue;
             if (!this.visibleState.flaggedCells.has(key)) {
                 candidates.push({
@@ -381,7 +366,7 @@ export class BotCore {
                     x: cell.x,
                     y: cell.y,
                     priority: 100,
-                    reason: 'Deterministic: Confirmed mine - FLAG FIRST!',
+                    reason: 'Deterministic: Confirmed mine - FLAG!',
                     layer: 'deterministic'
                 });
             }
@@ -389,7 +374,8 @@ export class BotCore {
         
         // Radar mayınlarını bayrakla
         for (const pos of this.visibleState.pendingRadarFlags) {
-            if (!this.visibleState.flaggedCells.has(`${pos.x},${pos.y}`)) {
+            const key = `${pos.x},${pos.y}`;
+            if (!this.visibleState.flaggedCells.has(key)) {
                 candidates.push({
                     type: 'flag',
                     x: pos.x,
@@ -401,7 +387,7 @@ export class BotCore {
             }
         }
         
-        // ÖNCELİK 3: Güvenli hücreleri aç (bayraklardan sonra)
+        // ÖNCELİK 2: Güvenli hücreleri aç
         for (const cell of safeCells) {
             candidates.push({
                 type: 'reveal',
@@ -411,6 +397,27 @@ export class BotCore {
                 reason: 'Deterministic: Guaranteed safe',
                 layer: 'deterministic'
             });
+        }
+        
+        // ÖNCELİK 3: Şüpheli bayrakları kaldır (SADECE başka hamle yoksa!)
+        // Ve sadece gerçekten sorunlu olduğundan eminsek
+        if (candidates.length === 0 && suspiciousFlags.length > 0) {
+            for (const cell of suspiciousFlags) {
+                const key = `${cell.x},${cell.y}`;
+                if (this.visibleState.unflagCooldown.has(key)) continue;
+                if (this.visibleState.flaggedCells.has(key)) {
+                    // Sadece 1 tane unflag yap, sonra bekle
+                    candidates.push({
+                        type: 'unflag',
+                        x: cell.x,
+                        y: cell.y,
+                        priority: 90,
+                        reason: 'Fix: Removing suspicious flag',
+                        layer: 'deterministic'
+                    });
+                    break; // Sadece 1 tane!
+                }
+            }
         }
         
         // Eğer deterministic hamle varsa, güç kullanımını da değerlendir

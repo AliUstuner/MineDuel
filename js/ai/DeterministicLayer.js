@@ -22,10 +22,12 @@ export class DeterministicLayer {
         this.constraints = [];
         this.suspiciousFlags = new Set();
         
-        // Pattern cache
-        this.patternCache = new Map();
+        // Cache - aynı durumda tekrar analiz yapma
+        this.lastAnalysisTime = 0;
+        this.lastBoardState = null;
+        this.analysisValid = false;
         
-        // Analysis statistics
+        // Analysis statistics (per analysis, not cumulative)
         this.stats = {
             simpleDeductions: 0,
             subsetDeductions: 0,
@@ -40,7 +42,9 @@ export class DeterministicLayer {
         this.mineCells.clear();
         this.constraints = [];
         this.suspiciousFlags.clear();
-        this.patternCache.clear();
+        this.lastAnalysisTime = 0;
+        this.lastBoardState = null;
+        this.analysisValid = false;
         this.stats = { simpleDeductions: 0, subsetDeductions: 0, crossRefDeductions: 0, patternDeductions: 0, globalDeductions: 0 };
     }
     
@@ -48,7 +52,7 @@ export class DeterministicLayer {
      * Find guaranteed safe cells
      */
     findSafeCells() {
-        this.analyze();
+        this.analyzeIfNeeded();
         
         const result = [];
         for (const key of this.safeCells) {
@@ -65,7 +69,7 @@ export class DeterministicLayer {
      * Find guaranteed mine cells
      */
     findMineCells() {
-        this.analyze();
+        this.analyzeIfNeeded();
         
         const result = [];
         for (const key of this.mineCells) {
@@ -103,10 +107,71 @@ export class DeterministicLayer {
     }
     
     /**
+     * Check if analysis is needed (cache mechanism)
+     */
+    analyzeIfNeeded() {
+        const now = Date.now();
+        
+        // 100ms içinde tekrar analiz yapma
+        if (this.analysisValid && now - this.lastAnalysisTime < 100) {
+            return;
+        }
+        
+        // Board değişti mi kontrol et
+        const currentState = this.getBoardStateHash();
+        if (this.analysisValid && currentState === this.lastBoardState) {
+            return;
+        }
+        
+        this.analyze();
+        this.lastAnalysisTime = now;
+        this.lastBoardState = currentState;
+        this.analysisValid = true;
+    }
+    
+    /**
+     * Get a hash of the current board state
+     */
+    getBoardStateHash() {
+        if (!this.bot.board?.grid) return '';
+        
+        let hash = '';
+        const gridSize = this.bot.gridSize;
+        
+        for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
+                const cell = this.bot.board.grid[y]?.[x];
+                if (cell) {
+                    if (cell.isRevealed) hash += cell.neighborCount;
+                    else if (cell.isFlagged) hash += 'F';
+                    else hash += '.';
+                }
+            }
+        }
+        return hash;
+    }
+    
+    /**
+     * Invalidate cache (call when board changes)
+     */
+    invalidateCache() {
+        this.analysisValid = false;
+    }
+    
+    /**
      * Main analysis - runs all deduction techniques
      */
     analyze() {
         if (!this.bot.board?.grid) return;
+        
+        // Reset stats for THIS analysis (not cumulative!)
+        this.stats = {
+            simpleDeductions: 0,
+            subsetDeductions: 0,
+            crossRefDeductions: 0,
+            patternDeductions: 0,
+            globalDeductions: 0
+        };
         
         this.safeCells.clear();
         this.mineCells.clear();

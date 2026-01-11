@@ -106,34 +106,35 @@ export class BotDifficultyConfig {
                 useLearning: true
             },
             
-            // EXPERT: Near-optimal play
-            // - Very fast
-            // - Almost no mistakes
+            // EXPERT: Near-optimal play (MASTER LEVEL)
+            // - Lightning fast reactions
+            // - Perfect accuracy
             // - Full strategic power usage
             expert: {
-                thinkTimeMin: 150,
-                thinkTimeMax: 350,
+                thinkTimeMin: 50,      // Çok hızlı!
+                thinkTimeMax: 150,     // Maksimum 150ms
                 
-                accuracy: 0.98,
-                errorBias: 0.005,
+                accuracy: 0.99,        // Neredeyse mükemmel
+                errorBias: 0.001,      // Hata yok denecek kadar az
                 
-                powerCooldown: 6000,
+                powerCooldown: 4000,   // 4 saniye
                 powerLimits: {
-                    freeze: 4,
-                    shield: 4,
-                    radar: 5,
-                    safeburst: 4
+                    freeze: 5,
+                    shield: 5,
+                    radar: 6,
+                    safeburst: 5
                 },
                 
-                riskTolerance: 0.50,
+                riskTolerance: 0.55,   // Daha agresif
                 
                 watchOpponent: 1.0,
                 useLearning: true,
                 
-                // Expert için ekstra özellikler
+                // Master level özellikler
                 useAdvancedPatterns: true,
                 useGlobalAnalysis: true,
-                preferCascades: true
+                preferCascades: true,
+                instantDecisions: true  // Anında karar ver
             }
         };
         
