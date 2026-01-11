@@ -628,136 +628,70 @@ export class BotCore {
     }
     
     /**
-     * Try to use a smart power (called every think cycle)
-     * FELSEFE: "En çok puanı alan kazanır - güçleri tasarruflu kullan!"
-     * Returns true if power was used
+     * RASTGELE GÜÇ KULLANIMI - Basit sistem
+     * Her oyunda rastgele 2 güç kullanır, sadece puan sınırlaması var
      */
     tryRandomPowerUsage() {
         const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
+        const powers = ['freeze', 'shield', 'radar', 'safeburst'];
         
-        // Cooldown kontrolü - son güç kullanımından beri geçen süre
+        // Cooldown kontrolü - güçler arası 15-25 saniye rastgele
         const timeSinceLastPower = Date.now() - this.powerUsage.lastUseTime;
+        const cooldown = this.powerUsage.lastUseTime === 0 ? 10000 : 20000; // İlk güç 10sn, sonraki 20sn
         
-        // Çok uzun cooldown - güçler arası en az 30 saniye
-        const effectiveCooldown = this.powerUsage.lastUseTime === 0 ? 25000 : 30000;
-        
-        if (timeSinceLastPower < effectiveCooldown) {
+        if (timeSinceLastPower < cooldown) {
             return false;
         }
         
         // Mevcut puanı al
         const myScore = this.game?.opponentScore || 0;
-        const opponentScore = this.game?.score || 0;
-        const scoreDiff = myScore - opponentScore;
         
-        // OYUNUN GERÇEK GÜÇ KULLANIMINI KONTROL ET - kendi sayacımız yetersiz
+        // OYUNUN GERÇEK GÜÇ KULLANIMINI KONTROL ET
         const gameUsesLeft = this.game?.botPowerUsesLeft || {};
-        const initialUses = 3; // Her güç başta 3 hak
+        const initialUses = 3;
         const totalUsedInGame = (initialUses - (gameUsesLeft.freeze || 0)) +
                                  (initialUses - (gameUsesLeft.shield || 0)) +
                                  (initialUses - (gameUsesLeft.radar || 0)) +
                                  (initialUses - (gameUsesLeft.safeburst || 0));
         
-        // Maç başına max 2 güç kullan!
+        // Maç başına max 2 güç!
         if (totalUsedInGame >= 2) {
-            console.log(`[BotCore] Power limit reached: ${totalUsedInGame} powers used this match`);
             return false;
         }
         
-        // AKILLI KARAR: Sadece gerçekten gerektiğinde güç kullan
-        // Puan kaybetmek istemiyoruz - güç kullanmak puan kaybettirir!
-        
-        // Durum 1: ÇOK gerideyiz ve SADECE kritik faz - FREEZE veya SAFEBURST mantıklı
-        const isBehind = scoreDiff < -60;  // Çok büyük fark gerekli
-        const isCriticalPhase = this.gameState.phase === 'critical';  // Sadece kritik faz
-        
-        // Durum 2: Çok öndeyiz ve oyun sonuna yaklaşıyor - SHIELD mantıklı
-        const isAhead = scoreDiff > 100;  // Çok büyük fark gerekli
-        
-        // Durum 3: Güvenli hamle yok ve sıkıştık - RADAR mantıklı
-        const safeCells = this.deterministicLayer.findSafeCells();
-        const isStuck = safeCells.length === 0;
-        
-        // Sadece bu durumlardan biri varsa güç kullanmayı düşün
-        const shouldConsiderPower = (isBehind && isCriticalPhase) || 
-                                    (isAhead && isCriticalPhase);
-        // NOT: isStuck durumunu kaldırdık - radar çok fazla kullanılıyordu
-        
-        if (!shouldConsiderPower) {
+        // %15 şansla güç kullanmayı dene (rastgele)
+        if (Math.random() > 0.15) {
             return false;
         }
         
-        // Bu durumda bile sadece %20 şansla güç kullan
-        if (Math.random() > 0.20) {
+        // Kullanılabilir güçleri bul (sadece puan sınırlaması)
+        const availablePowers = powers.filter(power => {
+            const cost = costs[power];
+            const usesLeft = gameUsesLeft[power] || 0;
+            return usesLeft > 0 && myScore >= cost;
+        });
+        
+        if (availablePowers.length === 0) {
             return false;
         }
         
-        // Minimum puan eşiği - güç kullandıktan sonra yeterli puan kalmalı
-        const minScoreForPower = 150; // En az 150 puan olmalı
-        if (myScore < minScoreForPower) {
-            return false;
-        }
+        // RASTGELE güç seç
+        const randomPower = availablePowers[Math.floor(Math.random() * availablePowers.length)];
         
-        // gameUsesLeft zaten yukarıda tanımlandı, tekrar kullan
+        console.log(`[BotCore] 🎲 RANDOM POWER: ${randomPower} (score: ${myScore}, used: ${totalUsedInGame}/2)`);
         
-        // Hangi güçler kullanılabilir?
-        const canUseFreeze = (gameUsesLeft.freeze || 0) > 0 && myScore >= costs.freeze;
-        const canUseSafeburst = (gameUsesLeft.safeburst || 0) > 0 && myScore >= costs.safeburst;
-        const canUseShield = (gameUsesLeft.shield || 0) > 0 && myScore >= costs.shield;
-        const canUseRadar = (gameUsesLeft.radar || 0) > 0 && myScore >= costs.radar;
-        
-        // Son kullanılan gücü takip et - aynı gücü üst üste kullanma
-        const lastPower = this.powerUsage.lastPowerUsed || null;
-        
-        // Duruma göre en mantıklı gücü seç
-        let selectedPower = null;
-        
-        if (isBehind && isCriticalPhase) {
-            // Gerideyiz - rakibi durdur veya hızlı puan al
-            if (scoreDiff < -50 && canUseSafeburst && lastPower !== 'safeburst') {
-                selectedPower = 'safeburst';
-            } else if (canUseFreeze && lastPower !== 'freeze') {
-                selectedPower = 'freeze';
-            } else if (canUseSafeburst && lastPower !== 'safeburst') {
-                selectedPower = 'safeburst';
-            }
-        } else if (isAhead && isCriticalPhase) {
-            // Öndeyiz - kendimizi koru
-            if (canUseShield) {
-                selectedPower = 'shield';
-            }
-        } else if (isStuck) {
-            // Sıkıştık - mayın bul
-            if (canUseRadar) {
-                selectedPower = 'radar';
-            }
-        }
-        
-        if (!selectedPower) {
-            return false;
-        }
-        
-        // Seçilen gücü kullanabilir miyiz kontrol et
-        const cost = costs[selectedPower];
-        
-        if (myScore < cost) {
-            return false;
-        }
-        
-        console.log(`[BotCore] 🎯 STRATEGIC POWER: ${selectedPower} (cost: ${cost}, score: ${myScore}, diff: ${scoreDiff}, reason: ${isBehind ? 'behind' : isAhead ? 'ahead' : 'stuck'})`);
-        
-        // executePower kullan - tüm limit kontrolleri orada
+        // executePower kullan - limit kontrolleri orada
         this.executePower({
             type: 'power',
-            power: selectedPower,
-            reason: `Strategic: ${isBehind ? 'behind' : isAhead ? 'ahead' : 'stuck'}`
+            power: randomPower,
+            reason: 'Random power usage'
         });
         
         return true;
     }
     
     /**
-     * Select the best power based on game situation
+     * Select the best power based on game situation (artık kullanılmıyor)
      */
     selectSmartPower(myScore, scoreDiff, lastPower, costs) {
         const availablePowers = [];
