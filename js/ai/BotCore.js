@@ -678,8 +678,7 @@ export class BotCore {
             return false;
         }
         
-        // Oyundaki gerçek güç haklarını al
-        const gameUsesLeft = this.game?.botPowerUsesLeft || {};
+        // gameUsesLeft zaten yukarıda tanımlandı, tekrar kullan
         
         // Hangi güçler kullanılabilir?
         const canUseFreeze = (gameUsesLeft.freeze || 0) > 0 && myScore >= costs.freeze;
