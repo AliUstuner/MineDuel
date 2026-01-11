@@ -20,6 +20,7 @@ export class DeterministicLayer {
         this.safeCells = new Set();     // Guaranteed safe
         this.mineCells = new Set();     // Guaranteed mines
         this.constraints = [];          // Active constraints from numbered cells
+        this.suspiciousFlags = new Set(); // Flags that might be wrong
     }
     
     /**
@@ -29,6 +30,7 @@ export class DeterministicLayer {
         this.safeCells.clear();
         this.mineCells.clear();
         this.constraints = [];
+        this.suspiciousFlags = new Set();
     }
     
     /**
@@ -83,11 +85,15 @@ export class DeterministicLayer {
      * Main analysis function - builds constraints and solves
      */
     analyze() {
-        if (!this.bot.board?.grid) return;
+        if (!this.bot.board?.grid) {
+            console.warn('[DeterministicLayer] No board available for analysis');
+            return;
+        }
         
         this.safeCells.clear();
         this.mineCells.clear();
         this.constraints = [];
+        this.suspiciousFlags = new Set(); // Her analizde sıfırla
         
         // Build constraints from numbered cells
         this.buildConstraints();
@@ -109,19 +115,39 @@ export class DeterministicLayer {
     buildConstraints() {
         const gridSize = this.bot.gridSize;
         
+        if (!this.bot.board?.grid) {
+            console.warn('[DeterministicLayer] No board grid available');
+            return;
+        }
+        
+        let revealedCount = 0;
+        let numberedCount = 0;
+        
         for (let y = 0; y < gridSize; y++) {
             for (let x = 0; x < gridSize; x++) {
-                const cell = this.bot.board.grid[y][x];
+                const cell = this.bot.board.grid[y]?.[x];
+                if (!cell) continue;
+                
+                if (cell.isRevealed) revealedCount++;
                 
                 // Only revealed cells with numbers create constraints
-                if (!cell.isRevealed || cell.neighborCount === 0) continue;
+                // neighborCount can be 0 (empty cell) - skip those
+                // neighborCount > 0 means it has adjacent mines
+                if (!cell.isRevealed) continue;
+                
+                const count = cell.neighborCount || 0;
+                if (count === 0) continue; // Empty cells don't create constraints
+                
+                numberedCount++;
                 
                 const neighbors = this.bot.getNeighbors(x, y);
                 const hiddenCells = new Set();
                 let flaggedCount = 0;
                 
                 for (const n of neighbors) {
-                    const nc = this.bot.board.grid[n.y][n.x];
+                    const nc = this.bot.board.grid[n.y]?.[n.x];
+                    if (!nc) continue;
+                    
                     if (nc.isFlagged) {
                         flaggedCount++;
                     } else if (!nc.isRevealed) {
@@ -130,9 +156,19 @@ export class DeterministicLayer {
                 }
                 
                 // Constraint: remaining mines among hidden cells
-                const remainingMines = cell.neighborCount - flaggedCount;
+                const remainingMines = count - flaggedCount;
                 
-                if (hiddenCells.size > 0 && remainingMines >= 0) {
+                // Validate constraint
+                if (remainingMines < 0) {
+                    // YANLIŞ BAYRAK TESPİTİ!
+                    // Eğer remainingMines < 0 ise, çok fazla bayrak var
+                    console.warn(`[DeterministicLayer] Invalid flag at (${x},${y}): remainingMines=${remainingMines}`);
+                    // Bu bölgedeki bayrakları şüpheli olarak işaretle
+                    this.markSuspiciousFlags(x, y, neighbors);
+                    continue;
+                }
+                
+                if (hiddenCells.size > 0) {
                     this.constraints.push({
                         cells: hiddenCells,
                         mineCount: remainingMines,
@@ -142,6 +178,38 @@ export class DeterministicLayer {
                 }
             }
         }
+        
+        console.log(`[DeterministicLayer] Built ${this.constraints.length} constraints from ${numberedCount} numbered cells (${revealedCount} revealed)`);
+    }
+    
+    /**
+     * Mark suspicious flags for removal
+     */
+    markSuspiciousFlags(sourceX, sourceY, neighbors) {
+        for (const n of neighbors) {
+            const nc = this.bot.board.grid[n.y]?.[n.x];
+            if (nc && nc.isFlagged) {
+                // Bu bayrak şüpheli - kaldırılmalı
+                const key = `${n.x},${n.y}`;
+                if (!this.suspiciousFlags) this.suspiciousFlags = new Set();
+                this.suspiciousFlags.add(key);
+                console.log(`[DeterministicLayer] Suspicious flag at (${n.x},${n.y})`);
+            }
+        }
+    }
+    
+    /**
+     * Get suspicious flags that should be removed
+     */
+    getSuspiciousFlags() {
+        if (!this.suspiciousFlags) return [];
+        
+        const result = [];
+        for (const key of this.suspiciousFlags) {
+            const [x, y] = key.split(',').map(Number);
+            result.push({ x, y });
+        }
+        return result;
     }
     
     /**
