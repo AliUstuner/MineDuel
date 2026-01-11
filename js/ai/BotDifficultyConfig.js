@@ -82,17 +82,41 @@ export class BotDifficultyConfig {
             },
             
             // HARD: Skilled opponent
-            // - Fast reactions
+            // - Moderate-fast reactions
             // - Rare mistakes
             // - Strategic power usage
             hard: {
-                thinkTimeMin: 400,
-                thinkTimeMax: 700,
+                thinkTimeMin: 500,
+                thinkTimeMax: 900,
                 
-                accuracy: 0.92,
-                errorBias: 0.03,
+                accuracy: 0.90,
+                errorBias: 0.05,
                 
                 powerCooldown: 12000,
+                powerLimits: {
+                    freeze: 2,
+                    shield: 2,
+                    radar: 2,
+                    safeburst: 2
+                },
+                
+                riskTolerance: 0.35,
+                
+                watchOpponent: 0.8,
+                useLearning: true
+            },
+            
+            // EXPERT: Strong but fair opponent
+            // - Human-like speed (not too fast)
+            // - High accuracy but beatable
+            expert: {
+                thinkTimeMin: 300,     // 300ms minimum - insan gibi
+                thinkTimeMax: 600,     // 600ms maksimum
+                
+                accuracy: 0.95,        // %95 doğru karar
+                errorBias: 0.02,       // Küçük hata payı
+                
+                powerCooldown: 8000,   // 8 saniye
                 powerLimits: {
                     freeze: 2,
                     shield: 2,
@@ -100,41 +124,11 @@ export class BotDifficultyConfig {
                     safeburst: 2
                 },
                 
-                riskTolerance: 0.38,
+                riskTolerance: 0.40,   // Makul risk
                 
                 watchOpponent: 0.9,
-                useLearning: true
-            },
-            
-            // EXPERT: Near-optimal play (MASTER LEVEL)
-            // - Lightning fast reactions
-            // - Perfect accuracy
-            // - Full strategic power usage
-            expert: {
-                thinkTimeMin: 50,      // Çok hızlı!
-                thinkTimeMax: 150,     // Maksimum 150ms
-                
-                accuracy: 0.99,        // Neredeyse mükemmel
-                errorBias: 0.001,      // Hata yok denecek kadar az
-                
-                powerCooldown: 4000,   // 4 saniye
-                powerLimits: {
-                    freeze: 5,
-                    shield: 5,
-                    radar: 6,
-                    safeburst: 5
-                },
-                
-                riskTolerance: 0.55,   // Daha agresif
-                
-                watchOpponent: 1.0,
                 useLearning: true,
-                
-                // Master level özellikler
-                useAdvancedPatterns: true,
-                useGlobalAnalysis: true,
-                preferCascades: true,
-                instantDecisions: true  // Anında karar ver
+                useAdvancedPatterns: true
             }
         };
         

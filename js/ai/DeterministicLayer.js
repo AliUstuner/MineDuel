@@ -239,6 +239,36 @@ export class DeterministicLayer {
     buildConstraints() {
         const gridSize = this.bot.gridSize;
         
+        // Debug: Board gerçekten doğru mu?
+        let totalRevealed = 0;
+        let totalHidden = 0;
+        let totalFlagged = 0;
+        let numberedCells = 0;
+        
+        for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
+                const cell = this.bot.board.grid[y]?.[x];
+                if (!cell) continue;
+                
+                if (cell.isRevealed) {
+                    totalRevealed++;
+                    if ((cell.neighborCount || 0) > 0) numberedCells++;
+                } else if (cell.isFlagged) {
+                    totalFlagged++;
+                } else {
+                    totalHidden++;
+                }
+            }
+        }
+        
+        console.log(`[DeterministicLayer] buildConstraints: ${totalRevealed} revealed (${numberedCells} numbered), ${totalHidden} hidden, ${totalFlagged} flagged`);
+        
+        // Eğer hiç hidden hücre yoksa constraint oluşturamayız
+        if (totalHidden === 0) {
+            console.warn('[DeterministicLayer] No hidden cells! All cells are revealed or flagged.');
+            return;
+        }
+        
         for (let y = 0; y < gridSize; y++) {
             for (let x = 0; x < gridSize; x++) {
                 const cell = this.bot.board.grid[y]?.[x];
