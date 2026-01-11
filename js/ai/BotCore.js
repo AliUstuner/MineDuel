@@ -241,13 +241,23 @@ export class BotCore {
             // STEP 1: Perceive the game state
             this.perceive();
             
-            // STEP 2: Analyze visible board (never access hidden info!)
+            // STEP 2: Rastgele güç kullanımını dene (her 5-10 saniyede bir)
+            const randomPowerUsed = this.tryRandomPowerUsage();
+            if (randomPowerUsed) {
+                // Güç kullandıysak bu turda başka hamle yapma
+                this.isThinking = false;
+                this.game?.hideBotThinking?.();
+                this.scheduleThink();
+                return;
+            }
+            
+            // STEP 3: Analyze visible board (never access hidden info!)
             this.analyzeVisibleBoard();
             
-            // STEP 3: Run three-layer decision process
+            // STEP 4: Run three-layer decision process
             const action = this.decide();
             
-            // STEP 4: Execute the chosen action
+            // STEP 5: Execute the chosen action
             if (action) {
                 this.execute(action);
             } else {
@@ -592,6 +602,79 @@ export class BotCore {
             });
             
             console.log(`[BotCore] Power used: ${action.power.toUpperCase()}`);
+        } else {
+            console.log(`[BotCore] Power FAILED: ${action.power} - useBotPower returned:`, result);
+        }
+    }
+    
+    /**
+     * Try to use a random power (called every think cycle)
+     * Returns true if power was used
+     */
+    tryRandomPowerUsage() {
+        const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
+        const powers = ['freeze', 'shield', 'radar', 'safeburst'];
+        
+        // Cooldown kontrolü - son güç kullanımından beri geçen süre
+        const timeSinceLastPower = Date.now() - this.powerUsage.lastUseTime;
+        const cooldown = this.config.getPowerCooldown();
+        
+        // Oyun başında 5 saniye bekle
+        const effectiveCooldown = this.powerUsage.lastUseTime === 0 ? 5000 : cooldown;
+        
+        if (timeSinceLastPower < effectiveCooldown) {
+            return false;
+        }
+        
+        // %30 şansla güç kullanmayı dene
+        if (Math.random() > 0.30) {
+            return false;
+        }
+        
+        // Mevcut puanı al
+        const myScore = this.game?.opponentScore || 0;
+        
+        // Kullanılabilecek güçleri filtrele
+        const availablePowers = powers.filter(power => {
+            const cost = costs[power];
+            const limit = this.config.getPowerLimit(power);
+            const used = this.powerUsage[power] || 0;
+            
+            // Yeterli puan var mı?
+            if (myScore < cost) {
+                return false;
+            }
+            
+            // Limit dolmamış mı?
+            if (used >= limit) {
+                return false;
+            }
+            
+            return true;
+        });
+        
+        if (availablePowers.length === 0) {
+            console.log(`[BotCore] No available powers - score: ${myScore}`);
+            return false;
+        }
+        
+        // Rastgele bir güç seç
+        const randomPower = availablePowers[Math.floor(Math.random() * availablePowers.length)];
+        const cost = costs[randomPower];
+        
+        console.log(`[BotCore] 🎲 RANDOM POWER: Trying ${randomPower} (cost: ${cost}, score: ${myScore})`);
+        
+        // Gücü kullan
+        const result = this.game?.useBotPower?.(randomPower, cost);
+        
+        if (result) {
+            this.powerUsage[randomPower]++;
+            this.powerUsage.lastUseTime = Date.now();
+            console.log(`[BotCore] ✅ RANDOM POWER SUCCESS: ${randomPower.toUpperCase()}`);
+            return true;
+        } else {
+            console.log(`[BotCore] ❌ RANDOM POWER FAILED: ${randomPower}`);
+            return false;
         }
     }
     
