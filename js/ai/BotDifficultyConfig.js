@@ -111,24 +111,29 @@ export class BotDifficultyConfig {
             // - Almost no mistakes
             // - Full strategic power usage
             expert: {
-                thinkTimeMin: 200,
-                thinkTimeMax: 400,
+                thinkTimeMin: 150,
+                thinkTimeMax: 350,
                 
-                accuracy: 0.97,
-                errorBias: 0.01,
+                accuracy: 0.98,
+                errorBias: 0.005,
                 
-                powerCooldown: 8000,
+                powerCooldown: 6000,
                 powerLimits: {
-                    freeze: 3,
-                    shield: 3,
-                    radar: 4,
-                    safeburst: 3
+                    freeze: 4,
+                    shield: 4,
+                    radar: 5,
+                    safeburst: 4
                 },
                 
-                riskTolerance: 0.45,
+                riskTolerance: 0.50,
                 
                 watchOpponent: 1.0,
-                useLearning: true
+                useLearning: true,
+                
+                // Expert için ekstra özellikler
+                useAdvancedPatterns: true,
+                useGlobalAnalysis: true,
+                preferCascades: true
             }
         };
         
