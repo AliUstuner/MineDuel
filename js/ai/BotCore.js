@@ -618,15 +618,15 @@ export class BotCore {
         const timeSinceLastPower = Date.now() - this.powerUsage.lastUseTime;
         const cooldown = this.config.getPowerCooldown();
         
-        // Oyun başında 5 saniye bekle
-        const effectiveCooldown = this.powerUsage.lastUseTime === 0 ? 5000 : cooldown;
+        // Oyun başında 8 saniye bekle, sonra normal cooldown (artırıldı)
+        const effectiveCooldown = this.powerUsage.lastUseTime === 0 ? 8000 : Math.max(cooldown, 10000);
         
         if (timeSinceLastPower < effectiveCooldown) {
             return false;
         }
         
-        // %25 şansla güç kullanmayı dene
-        if (Math.random() > 0.25) {
+        // %12 şansla güç kullanmayı dene (azaltıldı)
+        if (Math.random() > 0.12) {
             return false;
         }
         
@@ -634,6 +634,21 @@ export class BotCore {
         const myScore = this.game?.opponentScore || 0;
         const opponentScore = this.game?.score || 0;
         const scoreDiff = myScore - opponentScore;
+        
+        // Minimum puan eşiği - çok düşük puanla güç kullanma
+        // En ucuz güç 30 puan, en az 80 puan olmalı (güç kullandıktan sonra 20-50 puan kalsın)
+        if (myScore < 80) {
+            return false;
+        }
+        
+        // Toplam güç kullanım limiti - maç başına max 4-5 güç
+        const totalPowerUsed = (this.powerUsage.freeze || 0) + 
+                               (this.powerUsage.shield || 0) + 
+                               (this.powerUsage.radar || 0) + 
+                               (this.powerUsage.safeburst || 0);
+        if (totalPowerUsed >= 5) {
+            return false;
+        }
         
         // Son kullanılan gücü takip et - aynı gücü üst üste kullanma
         const lastPower = this.powerUsage.lastPowerUsed || null;
@@ -647,7 +662,7 @@ export class BotCore {
         
         const cost = costs[selectedPower];
         
-        console.log(`[BotCore] 🎯 SMART POWER: ${selectedPower} (cost: ${cost}, score: ${myScore}, diff: ${scoreDiff})`);
+        console.log(`[BotCore] 🎯 SMART POWER: ${selectedPower} (cost: ${cost}, score: ${myScore}, diff: ${scoreDiff}, total: ${totalPowerUsed + 1}/5)`);
         
         // Gücü kullan
         const result = this.game?.useBotPower?.(selectedPower, cost);
