@@ -163,7 +163,9 @@ export class BotCore {
             revealedCells: new Map(),
             flaggedCells: new Set(),
             radarMines: new Set(),
-            pendingRadarFlags: []
+            pendingRadarFlags: [],
+            recentlyUnflagged: new Set(),  // Yakın zamanda bayrak kaldırılan hücreler
+            unflagCooldown: new Map()      // Unflag cooldown - döngüyü kırmak için
         };
         
         // Reset layers
@@ -333,6 +335,15 @@ export class BotCore {
     decide() {
         const candidates = [];
         
+        // Cooldown temizliği (5 saniyeden eski olanları sil)
+        const now = Date.now();
+        for (const [key, time] of this.visibleState.unflagCooldown) {
+            if (now - time > 5000) {
+                this.visibleState.unflagCooldown.delete(key);
+                this.visibleState.recentlyUnflagged.delete(key);
+            }
+        }
+        
         // LAYER 1: Deterministic (guaranteed moves)
         const safeCells = this.deterministicLayer.findSafeCells();
         const mineCells = this.deterministicLayer.findMineCells();
@@ -340,60 +351,74 @@ export class BotCore {
         
         console.log(`[BotCore] Deterministic found: ${safeCells.length} safe, ${mineCells.length} mines, ${suspiciousFlags.length} suspicious flags`);
         
-        // EN YÜKSEK ÖNCELİK: Şüpheli bayrakları kaldır!
-        // Yanlış bayraklar constraint hesaplamasını bozar
+        // ÖNCELİK 1: GÜVENLİ HÜCRE VARSA ÖNCE ONU AÇ!
+        // Bu döngüyü kırar ve oyunu ilerletir
+        if (safeCells.length > 0) {
+            for (const cell of safeCells) {
+                candidates.push({
+                    type: 'reveal',
+                    x: cell.x,
+                    y: cell.y,
+                    priority: 100,
+                    reason: 'Deterministic: Guaranteed safe - REVEAL FIRST!',
+                    layer: 'deterministic'
+                });
+            }
+            // Güvenli hücre varsa diğer şeylere bakma, direkt aç
+            candidates.sort((a, b) => b.priority - a.priority);
+            return this.selectActionByDifficulty(candidates);
+        }
+        
+        // ÖNCELİK 2: Şüpheli bayrakları kaldır (sadece güvenli hücre yoksa)
         for (const cell of suspiciousFlags) {
             const key = `${cell.x},${cell.y}`;
+            // Cooldown kontrolü - aynı bayrağı sürekli kaldırıp koymayı önle
+            if (this.visibleState.unflagCooldown.has(key)) {
+                continue; // Bu bayrak yakın zamanda kaldırıldı, atla
+            }
             if (this.visibleState.flaggedCells.has(key)) {
                 candidates.push({
                     type: 'unflag',
                     x: cell.x,
                     y: cell.y,
-                    priority: 110,  // En yüksek - yanlış bayrakları hemen kaldır
+                    priority: 95,
                     reason: 'Fix: Removing suspicious flag',
                     layer: 'deterministic'
                 });
             }
         }
         
-        // Kesin mayınları bayrakla (yüksek öncelik)
+        // ÖNCELİK 3: Kesin mayınları bayrakla
         for (const cell of mineCells) {
-            if (!this.visibleState.flaggedCells.has(`${cell.x},${cell.y}`)) {
+            const key = `${cell.x},${cell.y}`;
+            // Yakın zamanda unflag edilen hücreyi tekrar bayraklama
+            if (this.visibleState.recentlyUnflagged.has(key)) {
+                continue;
+            }
+            if (!this.visibleState.flaggedCells.has(key)) {
                 candidates.push({
                     type: 'flag',
                     x: cell.x,
                     y: cell.y,
-                    priority: 105,  // Yüksek - mayınları bayrakla
-                    reason: 'Deterministic: Confirmed mine - FLAG!',
+                    priority: 90,
+                    reason: 'Deterministic: Confirmed mine',
                     layer: 'deterministic'
                 });
             }
         }
         
-        // Radar mayınlarını bayrakla (daha da yüksek öncelik)
+        // Radar mayınlarını bayrakla
         for (const pos of this.visibleState.pendingRadarFlags) {
             if (!this.visibleState.flaggedCells.has(`${pos.x},${pos.y}`)) {
                 candidates.push({
                     type: 'flag',
                     x: pos.x,
                     y: pos.y,
-                    priority: 106,  // Radar mayınları
-                    reason: 'Radar: Revealed mine - FLAG!',
+                    priority: 92,
+                    reason: 'Radar: Revealed mine',
                     layer: 'deterministic'
                 });
             }
-        }
-        
-        // Güvenli hücreleri aç
-        for (const cell of safeCells) {
-            candidates.push({
-                type: 'reveal',
-                x: cell.x,
-                y: cell.y,
-                priority: 100,
-                reason: 'Deterministic: Guaranteed safe',
-                layer: 'deterministic'
-            });
         }
         
         // LAYER 2: Probabilistic (when no deterministic moves)
@@ -528,8 +553,17 @@ export class BotCore {
      * Execute an unflag action
      */
     executeUnflag(action) {
+        const key = `${action.x},${action.y}`;
+        
         this.game?.makeBotUnflag?.(action.x, action.y);
-        this.visibleState.flaggedCells.delete(`${action.x},${action.y}`);
+        this.visibleState.flaggedCells.delete(key);
+        
+        // Cooldown ekle - bu hücreyi bir süre tekrar bayraklama
+        this.visibleState.recentlyUnflagged.add(key);
+        this.visibleState.unflagCooldown.set(key, Date.now());
+        
+        this.gameState.wrongFlags++; // Yanlış bayrak sayacı
+        console.log(`[BotCore] Unflagged (${action.x},${action.y}) - added to cooldown`);
     }
     
     /**
