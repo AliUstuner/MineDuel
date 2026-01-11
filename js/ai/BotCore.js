@@ -618,8 +618,8 @@ export class BotCore {
         // Cooldown kontrolü - son güç kullanımından beri geçen süre
         const timeSinceLastPower = Date.now() - this.powerUsage.lastUseTime;
         
-        // Çok uzun cooldown - güçler arası en az 25 saniye
-        const effectiveCooldown = this.powerUsage.lastUseTime === 0 ? 20000 : 25000;
+        // Çok uzun cooldown - güçler arası en az 30 saniye
+        const effectiveCooldown = this.powerUsage.lastUseTime === 0 ? 25000 : 30000;
         
         if (timeSinceLastPower < effectiveCooldown) {
             return false;
@@ -630,12 +630,17 @@ export class BotCore {
         const opponentScore = this.game?.score || 0;
         const scoreDiff = myScore - opponentScore;
         
-        // Toplam güç kullanım limiti - maç başına max 1-2 güç
-        const totalPowerUsed = (this.powerUsage.freeze || 0) + 
-                               (this.powerUsage.shield || 0) + 
-                               (this.powerUsage.radar || 0) + 
-                               (this.powerUsage.safeburst || 0);
-        if (totalPowerUsed >= 2) {
+        // OYUNUN GERÇEK GÜÇ KULLANIMINI KONTROL ET - kendi sayacımız yetersiz
+        const gameUsesLeft = this.game?.botPowerUsesLeft || {};
+        const initialUses = 3; // Her güç başta 3 hak
+        const totalUsedInGame = (initialUses - (gameUsesLeft.freeze || 0)) +
+                                 (initialUses - (gameUsesLeft.shield || 0)) +
+                                 (initialUses - (gameUsesLeft.radar || 0)) +
+                                 (initialUses - (gameUsesLeft.safeburst || 0));
+        
+        // Maç başına max 1 güç kullan!
+        if (totalUsedInGame >= 1) {
+            console.log(`[BotCore] Power limit reached: ${totalUsedInGame} powers used this match`);
             return false;
         }
         
@@ -643,11 +648,11 @@ export class BotCore {
         // Puan kaybetmek istemiyoruz - güç kullanmak puan kaybettirir!
         
         // Durum 1: ÇOK gerideyiz ve SADECE kritik faz - FREEZE veya SAFEBURST mantıklı
-        const isBehind = scoreDiff < -50;  // Daha büyük fark gerekli
+        const isBehind = scoreDiff < -60;  // Çok büyük fark gerekli
         const isCriticalPhase = this.gameState.phase === 'critical';  // Sadece kritik faz
         
         // Durum 2: Çok öndeyiz ve oyun sonuna yaklaşıyor - SHIELD mantıklı
-        const isAhead = scoreDiff > 80;  // Daha büyük fark gerekli
+        const isAhead = scoreDiff > 100;  // Çok büyük fark gerekli
         
         // Durum 3: Güvenli hamle yok ve sıkıştık - RADAR mantıklı
         const safeCells = this.deterministicLayer.findSafeCells();
