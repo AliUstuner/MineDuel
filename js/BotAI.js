@@ -158,7 +158,40 @@ export class BotAI {
         // Opponent analysis'i initialize et
         this.initOpponentAnalysis();
         
-        console.log(`[AI] ${difficulty.toUpperCase()} | Win Rate: ${this.getWinRate()}% | GLOBAL AI v7`);
+        // ==================== ÖĞRENMEDEN DAVRANIŞ AYARLA ====================
+        this.adjustBehaviorFromLearning();
+        
+        console.log(`[AI] ${difficulty.toUpperCase()} | Win Rate: ${this.getWinRate()}% | Games: ${this.learning.stats.gamesPlayed} | GLOBAL AI v8`);
+    }
+    
+    // Öğrenme verisinden davranışı ayarla
+    adjustBehaviorFromLearning() {
+        const stats = this.learning.stats;
+        const winRate = stats.gamesPlayed > 0 ? (stats.wins / stats.gamesPlayed) : 0.5;
+        
+        // Kazanma oranı düşükse daha dikkatli ol
+        if (winRate < 0.3 && stats.gamesPlayed >= 3) {
+            // Çok kaybediyoruz - daha güvenli oyna
+            this.config.riskTolerance = Math.max(0.15, this.config.riskTolerance - 0.1);
+            console.log(`[AI] 📉 Düşük kazanma oranı (${(winRate*100).toFixed(0)}%) - Risk azaltıldı`);
+        } else if (winRate > 0.6 && stats.gamesPlayed >= 3) {
+            // Çok kazanıyoruz - biraz daha agresif olabiliriz
+            this.config.riskTolerance = Math.min(0.5, this.config.riskTolerance + 0.05);
+            console.log(`[AI] 📈 Yüksek kazanma oranı (${(winRate*100).toFixed(0)}%) - Daha agresif`);
+        }
+        
+        // En etkili gücü belirle
+        const powers = this.learning.powers;
+        let bestPower = 'radar';
+        let bestEff = 0;
+        for (const [power, data] of Object.entries(powers)) {
+            if (data.effectiveness > bestEff) {
+                bestPower = power;
+                bestEff = data.effectiveness;
+            }
+        }
+        this.preferredPower = bestPower;
+        console.log(`[AI] 🔋 Tercih edilen güç: ${bestPower} (etkinlik: ${(bestEff*100).toFixed(0)}%)`);
     }
     
     // ==================== OPPONENT ANALYSIS INIT ====================
@@ -196,37 +229,41 @@ export class BotAI {
         const configs = {
             easy: {
                 thinkTime: { min: 1500, max: 2500 },
-                accuracy: 0.55,
+                accuracy: 0.70,  // Artırıldı - daha akıllı hamleler
                 powerCooldown: 30000,
                 powerLimits: { freeze: 0, shield: 0, radar: 1, safeburst: 0 },
                 riskTolerance: 0.25,
-                playerWatchRate: 0.3   // Oyuncuyu %30 izler
+                playerWatchRate: 0.3,
+                flagChance: 0.6  // Bayrak koyma şansı
             },
             medium: {
                 thinkTime: { min: 800, max: 1400 },
-                accuracy: 0.75,
+                accuracy: 0.85,  // Artırıldı
                 powerCooldown: 18000,
                 powerLimits: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
                 riskTolerance: 0.30,
-                playerWatchRate: 0.6
+                playerWatchRate: 0.6,
+                flagChance: 0.8
             },
             hard: {
                 thinkTime: { min: 400, max: 700 },
-                accuracy: 0.88,
+                accuracy: 0.95,  // Artırıldı
                 powerCooldown: 10000,
                 powerLimits: { freeze: 1, shield: 1, radar: 2, safeburst: 1 },
                 riskTolerance: 0.35,
                 playerWatchRate: 1.0,
-                independentPlay: true
+                independentPlay: true,
+                flagChance: 0.95
             },
             expert: {
-                thinkTime: { min: 200, max: 400 },  // Daha hızlı düşünme
-                accuracy: 0.95,
-                powerCooldown: 6000,  // Daha sık güç kullanımı
+                thinkTime: { min: 200, max: 400 },
+                accuracy: 0.99,  // Neredeyse mükemmel
+                powerCooldown: 6000,
                 powerLimits: { freeze: 2, shield: 2, radar: 3, safeburst: 2 },
                 riskTolerance: 0.45,
-                playerWatchRate: 1.0,  // Her zaman izle
-                independentPlay: true  // Oyuncudan bağımsız oyna
+                playerWatchRate: 1.0,
+                independentPlay: true,
+                flagChance: 1.0
             }
         };
         return configs[difficulty] || configs.medium;
@@ -1711,24 +1748,35 @@ export class BotAI {
         
         if (unrevealed.length === 0) return;
         
+        // KESİN MAYIN: Kalan mayın sayısı = kalan gizli hücre sayısı
         if (remainingMines === unrevealed.length && remainingMines > 0) {
-            // SADECE tek hücre kaldıysa kesin mayın de
-            if (unrevealed.length === 1) {
-                unrevealed.forEach(n => this.knowledge.mineCells.add(`${n.x},${n.y}`));
-            }
-            // Birden fazla hücre kaldıysa sadece yüksek olasılık ver
+            // TÜM gizli hücreler kesin mayın!
+            unrevealed.forEach(n => {
+                const key = `${n.x},${n.y}`;
+                this.knowledge.mineCells.add(key);
+                // Yüksek olasılık da ver
+                this.knowledge.probabilities.set(key, 1.0);
+                console.log(`[AI] 🎯 Kesin mayın tespit: (${n.x},${n.y}) - Sayı ${number}'den`);
+            });
         }
         
+        // KESİN GÜVENLİ: Hiç mayın kalmadı
         if (remainingMines === 0) {
             unrevealed.forEach(n => this.knowledge.safeCells.add(`${n.x},${n.y}`));
         }
         
+        // YÜKSEK OLASILIK: Mayın olma ihtimali yüksek
         if (remainingMines > 0 && remainingMines < unrevealed.length) {
             const prob = remainingMines / unrevealed.length;
             unrevealed.forEach(n => {
                 const key = `${n.x},${n.y}`;
                 const current = this.knowledge.probabilities.get(key) || 0;
                 this.knowledge.probabilities.set(key, Math.max(current, prob));
+                
+                // %80+ olasılıklı hücreleri potansiyel mayın olarak işaretle
+                if (prob >= 0.8) {
+                    this.knowledge.mineCells.add(key);
+                }
             });
         }
     }
@@ -1926,7 +1974,7 @@ export class BotAI {
     
     // Derin tahta analizi - tüm tahtayı yeniden değerlendir
     deepBoardAnalysis() {
-        // İlk geçiş: Temel analiz
+        // İlk geçiş: Temel analiz - HER SAYIYI KONTROL ET
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.board?.grid?.[y]?.[x];
@@ -1942,6 +1990,8 @@ export class BotAI {
                     else if (!nc.isRevealed) hiddenCells.push(n);
                 }
                 
+                const remainingMines = cell.neighborCount - flagCount;
+                
                 // Tüm mayınlar bulunmuşsa, kalan hücreler güvenli
                 if (flagCount === cell.neighborCount && hiddenCells.length > 0) {
                     for (const h of hiddenCells) {
@@ -1949,25 +1999,21 @@ export class BotAI {
                     }
                 }
                 
-                // SADECE TEK HÜCRE KALDIYSA ve tek mayın kaldıysa = KESİN MAYIN
-                // (Birden fazla hücre kaldığında kesin değil, riskli!)
-                const remainingMines = cell.neighborCount - flagCount;
-                if (remainingMines === 1 && hiddenCells.length === 1) {
-                    // Tek bir gizli hücre kaldı ve tam 1 mayın kaldı = KESİN
-                    const h = hiddenCells[0];
-                    const key = `${h.x},${h.y}`;
-                    // Radar ile onaylı değilse bile kesin mayın
-                    this.knowledge.mineCells.add(key);
-                    console.log(`[AI] 🎯 Kesin mayın tespit: ${key} (tek kalan hücre)`);
+                // KESİN MAYIN: Kalan mayın sayısı = kalan gizli hücre sayısı
+                if (remainingMines > 0 && remainingMines === hiddenCells.length) {
+                    for (const h of hiddenCells) {
+                        const key = `${h.x},${h.y}`;
+                        this.knowledge.mineCells.add(key);
+                        this.knowledge.probabilities.set(key, 1.0);
+                        console.log(`[AI] 🎯 Kesin mayın (deep): ${key} - Sayı ${cell.neighborCount}, ${hiddenCells.length} gizli`);
+                    }
                 }
-                // Birden fazla hücre kaldığında bayrak KOYMA - sadece olasılık hesapla
+                // Olasılık hesapla
                 else if (remainingMines > 0 && hiddenCells.length > remainingMines) {
-                    // Olasılık hesapla
                     const probability = remainingMines / hiddenCells.length;
                     for (const h of hiddenCells) {
                         const key = `${h.x},${h.y}`;
                         const currentProb = this.knowledge.probabilities.get(key) || 0;
-                        // En yüksek olasılığı tut
                         this.knowledge.probabilities.set(key, Math.max(currentProb, probability));
                     }
                 }
@@ -2231,6 +2277,23 @@ export class BotAI {
             }
         }
         
+        // Kesin mayını bayrakla - analyzeBoard'dan gelen tüm kesin mayınlar
+        for (const key of this.knowledge.mineCells) {
+            const [x, y] = key.split(',').map(Number);
+            const cell = this.board?.grid?.[y]?.[x];
+            if (cell && !cell.isFlagged && !cell.isRevealed) {
+                // Bayrakla - hem radar hem analiz sonuçları
+                const isRadarConfirmed = this.knowledge.radarMines.has(key);
+                const priority = isRadarConfirmed ? 95 : 88;
+                const reason = isRadarConfirmed ? 'Radar kesin mayın' : 'Analiz kesin mayın';
+                
+                this.brain.myState.correctFlags++;
+                actions.push({ type: 'flag', x, y, priority, reason });
+                console.log(`[AI] 🚩 Bayrak planlandı: (${x},${y}) - ${reason}`);
+                break; // Bir seferde bir bayrak
+            }
+        }
+        
         // Kesin güvenli hücre - GERÇEKTEN güvenli olanı bul (tehlikeli pattern'leri kontrol et)
         for (const key of this.knowledge.safeCells) {
             const [x, y] = key.split(',').map(Number);
@@ -2244,27 +2307,14 @@ export class BotAI {
             }
         }
         
-        // Kesin mayını bayrakla - SADECE RADAR veya TEK KALAN HÜCRE ise
-        for (const key of this.knowledge.mineCells) {
-            const [x, y] = key.split(',').map(Number);
-            const cell = this.board?.grid?.[y]?.[x];
-            if (cell && !cell.isFlagged && !cell.isRevealed) {
-                // SADECE radar ile tespit edildiyse VEYA kesin analiz sonucu ise bayrakla
-                const isRadarConfirmed = this.knowledge.radarMines.has(key);
-                
-                if (isRadarConfirmed) {
-                    this.brain.myState.correctFlags++;
-                    actions.push({ type: 'flag', x, y, priority: 95, reason: 'Radar kesin mayın' });
-                    break;
-                } else {
-                    // Radar ile onaylı değilse, çift kontrol yap
-                    // Gerçekten kesin mi yoksa yanlış tespit mi?
-                    const isDefinitelyMine = this.verifyMineCell(x, y);
-                    if (isDefinitelyMine) {
-                        this.brain.myState.correctFlags++;
-                        actions.push({ type: 'flag', x, y, priority: 85, reason: 'Kesin mayın (doğrulanmış)' });
-                        break;
-                    }
+        // YÜKSEK OLASILIKLI MAYINLARI DA BAYRAKLA (%70+)
+        for (const [key, prob] of this.knowledge.probabilities) {
+            if (prob >= 0.7) {
+                const [x, y] = key.split(',').map(Number);
+                const cell = this.board?.grid?.[y]?.[x];
+                if (cell && !cell.isFlagged && !cell.isRevealed && !this.knowledge.safeCells.has(key)) {
+                    // Yüksek olasılık var, bayrak koy
+                    actions.push({ type: 'flag', x, y, priority: 70, reason: `Yüksek risk: %${(prob * 100).toFixed(0)}` });
                 }
             }
         }
