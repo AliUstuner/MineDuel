@@ -420,16 +420,10 @@ export class BotCore {
         // NOT: Şüpheli bayrak kaldırma devre dışı - sorun çıkarıyordu
         // Bot artık sadece kesin bildiği mayınları bayraklıyor
         
-        // Eğer deterministic hamle varsa, güç kullanımını da değerlendir
+        // NOT: Güç kullanımı artık sadece tryRandomPowerUsage üzerinden
+        // StrategicLayer power önerileri devre dışı - limit kontrolü sorunları vardı
+        
         if (candidates.length > 0) {
-            const powerAction = this.strategicLayer.evaluatePowerUsage();
-            if (powerAction) {
-                // Güç score'u yüksekse bazen reveal'dan önce kullan
-                // Power score 60+ ise priority reveal'ı geçebilir
-                console.log(`[BotCore] Power candidate: ${powerAction.power} priority=${powerAction.priority}`);
-                candidates.push(powerAction);
-            }
-            
             candidates.sort((a, b) => b.priority - a.priority);
             return this.selectActionByDifficulty(candidates);
         }
@@ -451,11 +445,8 @@ export class BotCore {
             }
         }
         
-        // LAYER 3: Strategic (power usage, timing)
-        const powerAction = this.strategicLayer.evaluatePowerUsage();
-        if (powerAction) {
-            candidates.push(powerAction);
-        }
+        // LAYER 3: Strategic power usage devre dışı
+        // Tüm güç kullanımı tryRandomPowerUsage üzerinden kontrollü yapılıyor
         
         // No candidates? Return null for emergency action
         if (candidates.length === 0) return null;
@@ -585,15 +576,44 @@ export class BotCore {
     }
     
     /**
-     * Execute a power usage
+     * Execute a power usage - TEK GİRİŞ NOKTASI, TÜM KONTROLLER BURADA
      */
     executePower(action) {
         const costs = { freeze: 60, shield: 50, radar: 30, safeburst: 40 };
-        const result = this.game?.useBotPower?.(action.power, costs[action.power]);
+        
+        // ===== LİMİT KONTROLÜ - MAÇ BAŞINA MAX 2 GÜÇ =====
+        const gameUsesLeft = this.game?.botPowerUsesLeft || {};
+        const initialUses = 3;
+        const totalUsedInGame = (initialUses - (gameUsesLeft.freeze || 0)) +
+                                 (initialUses - (gameUsesLeft.shield || 0)) +
+                                 (initialUses - (gameUsesLeft.radar || 0)) +
+                                 (initialUses - (gameUsesLeft.safeburst || 0));
+        
+        if (totalUsedInGame >= 2) {
+            console.log(`[BotCore] ⛔ Power BLOCKED - limit reached: ${totalUsedInGame}/2 powers used`);
+            return;
+        }
+        
+        // Bu güç için hak kaldı mı?
+        if ((gameUsesLeft[action.power] || 0) <= 0) {
+            console.log(`[BotCore] ⛔ Power BLOCKED - no ${action.power} uses left`);
+            return;
+        }
+        
+        // Yeterli puan var mı?
+        const myScore = this.game?.opponentScore || 0;
+        const cost = costs[action.power];
+        if (myScore < cost) {
+            console.log(`[BotCore] ⛔ Power BLOCKED - not enough score: ${myScore} < ${cost}`);
+            return;
+        }
+        
+        const result = this.game?.useBotPower?.(action.power, cost);
         
         if (result) {
             this.powerUsage[action.power]++;
             this.powerUsage.lastUseTime = Date.now();
+            this.powerUsage.lastPowerUsed = action.power;
             
             this.learningSystem.recordPowerUsage({
                 power: action.power,
@@ -601,9 +621,9 @@ export class BotCore {
                 reason: action.reason
             });
             
-            console.log(`[BotCore] Power used: ${action.power.toUpperCase()}`);
+            console.log(`[BotCore] ✅ Power used: ${action.power.toUpperCase()} (${totalUsedInGame + 1}/2)`);
         } else {
-            console.log(`[BotCore] Power FAILED: ${action.power} - useBotPower returned:`, result);
+            console.log(`[BotCore] ❌ Power FAILED: ${action.power} - useBotPower returned:`, result);
         }
     }
     
@@ -720,27 +740,20 @@ export class BotCore {
         // Seçilen gücü kullanabilir miyiz kontrol et
         const cost = costs[selectedPower];
         
-        // Zaten yukarıda gameUsesLeft kontrol ettik, tekrar kontrol etmeye gerek yok
-        
         if (myScore < cost) {
             return false;
         }
         
         console.log(`[BotCore] 🎯 STRATEGIC POWER: ${selectedPower} (cost: ${cost}, score: ${myScore}, diff: ${scoreDiff}, reason: ${isBehind ? 'behind' : isAhead ? 'ahead' : 'stuck'})`);
         
-        // Gücü kullan
-        const result = this.game?.useBotPower?.(selectedPower, cost);
+        // executePower kullan - tüm limit kontrolleri orada
+        this.executePower({
+            type: 'power',
+            power: selectedPower,
+            reason: `Strategic: ${isBehind ? 'behind' : isAhead ? 'ahead' : 'stuck'}`
+        });
         
-        if (result) {
-            this.powerUsage[selectedPower]++;
-            this.powerUsage.lastUseTime = Date.now();
-            this.powerUsage.lastPowerUsed = selectedPower;
-            console.log(`[BotCore] ✅ POWER SUCCESS: ${selectedPower.toUpperCase()}`);
-            return true;
-        } else {
-            console.log(`[BotCore] ❌ POWER FAILED: ${selectedPower}`);
-            return false;
-        }
+        return true;
     }
     
     /**
