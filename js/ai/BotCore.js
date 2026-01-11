@@ -703,14 +703,16 @@ export class BotCore {
             let priority = 10; // Base priority
             
             if (power === 'freeze') {
-                // FREEZE: Rakip öndeyken veya yakınken çok değerli
-                if (scoreDiff < -20) priority += 40;      // Çok gerideyiz - rakibi durdur
+                // FREEZE: Çok güçlü - rakibi durdurmak için
+                priority += 25; // Base bonus - freeze güçlü
+                if (scoreDiff < -20) priority += 35;      // Çok gerideyiz - rakibi durdur
                 else if (scoreDiff < 0) priority += 25;   // Biraz gerideyiz
-                else if (scoreDiff < 20) priority += 15;  // Yakın maç
+                else if (scoreDiff < 30) priority += 20;  // Yakın veya biraz önde
+                else priority += 15;                       // Çok öndeyiz - yine de faydalı
                 // Oyun ortası/sonu daha değerli
-                if (this.gameState.phase === 'mid') priority += 10;
-                if (this.gameState.phase === 'late') priority += 20;
-                if (this.gameState.phase === 'critical') priority += 30;
+                if (this.gameState.phase === 'mid') priority += 15;
+                if (this.gameState.phase === 'late') priority += 25;
+                if (this.gameState.phase === 'critical') priority += 35;
             }
             
             else if (power === 'shield') {
@@ -724,13 +726,15 @@ export class BotCore {
             }
             
             else if (power === 'radar') {
-                // RADAR: Her zaman faydalı, özellikle erken oyunda
-                priority += 20; // Base bonus - radar her zaman iyi
-                if (this.gameState.phase === 'early') priority += 25;
-                if (this.gameState.phase === 'mid') priority += 15;
-                // Güvenli hamle yoksa çok değerli
+                // RADAR: Sadece gerektiğinde - çok fazla kullanma
+                priority += 5; // Düşük base bonus
+                if (this.gameState.phase === 'early') priority += 15;
+                // Güvenli hamle yoksa değerli
                 const safeCells = this.deterministicLayer.findSafeCells();
-                if (safeCells.length === 0) priority += 30;
+                if (safeCells.length === 0) priority += 25;
+                // Zaten çok radar kullandıysa önceliği düşür
+                const radarUsed = this.powerUsage.radar || 0;
+                if (radarUsed >= 2) priority -= 20;
             }
             
             else if (power === 'safeburst') {
