@@ -112,11 +112,13 @@ export class StrategicLayer {
         
         if (!bestPower) return null;
         
+        // Power priority düşük olmalı - sadece başka seçenek yokken kullan
+        // Reveal (100) ve Flag (90-95) her zaman önce gelmeli
         return {
             type: 'power',
             power: bestPower,
-            priority: 70 + bestScore / 5,
-            reason: `Strategic: ${bestPower} (score: ${bestScore})`,
+            priority: 50 + bestScore / 10,  // Max 60, reveal/flag'den düşük
+            reason: `Strategic: ${bestPower} (score: ${bestScore.toFixed(0)})`,
             layer: 'strategic'
         };
     }

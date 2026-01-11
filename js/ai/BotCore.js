@@ -337,16 +337,29 @@ export class BotCore {
         const safeCells = this.deterministicLayer.findSafeCells();
         const mineCells = this.deterministicLayer.findMineCells();
         
-        // ÖNCE kesin mayınları bayrakla (yüksek öncelik)
-        // Bu sayede yanlışlıkla mayına basma riski azalır
+        console.log(`[BotCore] Deterministic found: ${safeCells.length} safe, ${mineCells.length} mines`);
+        
+        // Add safe moves (highest priority - OYUN KAZANMAK İÇİN)
+        for (const cell of safeCells) {
+            candidates.push({
+                type: 'reveal',
+                x: cell.x,
+                y: cell.y,
+                priority: 100,
+                reason: 'Deterministic: Guaranteed safe',
+                layer: 'deterministic'
+            });
+        }
+        
+        // Add flag moves for confirmed mines (lower priority than reveal)
         for (const cell of mineCells) {
             if (!this.visibleState.flaggedCells.has(`${cell.x},${cell.y}`)) {
                 candidates.push({
                     type: 'flag',
                     x: cell.x,
                     y: cell.y,
-                    priority: 102,  // En yüksek öncelik - kesin mayınları hemen bayrakla
-                    reason: 'Deterministic: Confirmed mine - FLAG IT!',
+                    priority: 90,  // Reveal'dan düşük, ama yine de yüksek
+                    reason: 'Deterministic: Confirmed mine',
                     layer: 'deterministic'
                 });
             }
@@ -359,23 +372,11 @@ export class BotCore {
                     type: 'flag',
                     x: pos.x,
                     y: pos.y,
-                    priority: 103,  // Radar mayınları en yüksek öncelik
-                    reason: 'Radar: Revealed mine - FLAG IT!',
+                    priority: 95,  // Radar mayınları biraz daha yüksek
+                    reason: 'Radar: Revealed mine',
                     layer: 'deterministic'
                 });
             }
-        }
-        
-        // Add safe moves (high priority but after flagging mines)
-        for (const cell of safeCells) {
-            candidates.push({
-                type: 'reveal',
-                x: cell.x,
-                y: cell.y,
-                priority: 100,
-                reason: 'Deterministic: Guaranteed safe',
-                layer: 'deterministic'
-            });
         }
         
         // LAYER 2: Probabilistic (when no deterministic moves)
