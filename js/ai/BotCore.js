@@ -102,6 +102,14 @@ export class BotCore {
         this.isFrozen = false;
         this.frozenUntil = 0;
         
+        // Debug: Board referansını kontrol et
+        console.log(`[BotCore] Board received:`, {
+            isOpponent: board?.isOpponent,
+            gridSize: board?.gridSize,
+            hasMines: board?.mines?.length > 0,
+            canvas: board?.canvas?.id
+        });
+        
         // Reset state
         this.resetState();
         

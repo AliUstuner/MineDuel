@@ -174,34 +174,24 @@ export class DeterministicLayer {
         if (this.constraints.length === 0) {
             console.warn('[DeterministicLayer] No constraints built! Checking board...');
             this.debugBoard();
+            return; // Constraint yoksa analiz yapma
         }
         
-        // 2. Basit kuralları uygula (mineCount = 0 veya cells.size)
+        // 2. SADECE Basit kuralları uygula - %100 GARANTİ
+        // mineCount = 0 → tüm komşular güvenli
+        // mineCount = hiddenCount → tüm komşular mayın
         this.applySimpleRules();
         
-        // 3. Pattern tanıma (1-1, 1-2, köşe desenleri)
-        this.applyPatternRecognition();
+        // NOT: Tüm gelişmiş analizler devre dışı - sadece basit kurallar
+        // Pattern recognition, subset, cross-reference hepsi kapalı
+        // Bot sadece %100 kesin bildiği hamleleri yapacak
         
-        // 4. Subset analizi (A ⊂ B ilişkisi)
-        this.applySubsetAnalysis();
-        
-        // 5. Cross-reference analizi (kesişim)
-        this.applyCrossReferenceAnalysis();
-        
-        // 6. Gelişmiş constraint reduction
-        this.applyConstraintReduction();
-        
-        // 7. Global mayın sayısı analizi
-        this.applyGlobalMineAnalysis();
-        
-        // Son temizlik
+        // Son temizlik - mayın olarak işaretlenen güvenli'den çıkar
         for (const key of this.mineCells) {
             this.safeCells.delete(key);
         }
         
-        console.log(`[DeterministicLayer] Analysis: ${this.safeCells.size} safe, ${this.mineCells.size} mines | ` +
-                    `Simple: ${this.stats.simpleDeductions}, Pattern: ${this.stats.patternDeductions}, ` +
-                    `Subset: ${this.stats.subsetDeductions}, CrossRef: ${this.stats.crossRefDeductions}`);
+        console.log(`[DeterministicLayer] Analysis: ${this.safeCells.size} safe, ${this.mineCells.size} mines | Constraints: ${this.constraints.length}`);
     }
     
     /**
