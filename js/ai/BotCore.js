@@ -373,7 +373,7 @@ export class BotCore {
                     type: 'flag',
                     x: cell.x,
                     y: cell.y,
-                    priority: 100,
+                    priority: 110,  // En yüksek - power'dan bile yüksek
                     reason: 'Deterministic: Confirmed mine - FLAG!',
                     layer: 'deterministic'
                 });
@@ -388,7 +388,7 @@ export class BotCore {
                     type: 'flag',
                     x: pos.x,
                     y: pos.y,
-                    priority: 100,
+                    priority: 110,  // En yüksek - power'dan bile yüksek
                     reason: 'Radar: Revealed mine - FLAG!',
                     layer: 'deterministic'
                 });
@@ -401,7 +401,7 @@ export class BotCore {
                 type: 'reveal',
                 x: cell.x,
                 y: cell.y,
-                priority: 95,
+                priority: 88,  // Reveal priority - power bazen önce gelebilsin
                 reason: 'Deterministic: Guaranteed safe',
                 layer: 'deterministic'
             });
@@ -413,9 +413,10 @@ export class BotCore {
         // Eğer deterministic hamle varsa, güç kullanımını da değerlendir
         if (candidates.length > 0) {
             const powerAction = this.strategicLayer.evaluatePowerUsage();
-            if (powerAction && powerAction.priority > 90) {
-                // Yüksek öncelikli güç kullanımını ekle
-                powerAction.priority = Math.min(powerAction.priority, 94); // Reveal'den düşük
+            if (powerAction) {
+                // Güç score'u yüksekse bazen reveal'dan önce kullan
+                // Power score 60+ ise priority reveal'ı geçebilir
+                console.log(`[BotCore] Power candidate: ${powerAction.power} priority=${powerAction.priority}`);
                 candidates.push(powerAction);
             }
             
@@ -485,7 +486,12 @@ export class BotCore {
      */
     execute(action) {
         const logPrefix = `[BotCore] ${action.layer?.toUpperCase() || 'ACTION'}`;
-        console.log(`${logPrefix}: ${action.type} (${action.x},${action.y}) - ${action.reason}`);
+        
+        if (action.type === 'power') {
+            console.log(`${logPrefix}: POWER ${action.power} (priority: ${action.priority}) - ${action.reason}`);
+        } else {
+            console.log(`${logPrefix}: ${action.type} (${action.x},${action.y}) - ${action.reason}`);
+        }
         
         switch (action.type) {
             case 'reveal':

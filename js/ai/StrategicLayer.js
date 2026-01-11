@@ -83,24 +83,35 @@ export class StrategicLayer {
         // Calculate power scores
         this.calculatePowerScores();
         
-        // Check cooldown
+        // Check cooldown - oyun başında hemen güç kullanabilsin
         const timeSinceLastPower = Date.now() - this.bot.powerUsage.lastUseTime;
-        if (timeSinceLastPower < config.getPowerCooldown()) {
+        const cooldown = config.getPowerCooldown();
+        
+        // lastUseTime 0 ise oyun başı - 3 saniye bekle
+        const effectiveCooldown = this.bot.powerUsage.lastUseTime === 0 ? 3000 : cooldown;
+        
+        if (timeSinceLastPower < effectiveCooldown) {
+            console.log(`[StrategicLayer] Power cooldown: ${((effectiveCooldown - timeSinceLastPower) / 1000).toFixed(1)}s remaining`);
             return null;
         }
         
         // Find best power
         let bestPower = null;
-        let bestScore = 25; // Düşük threshold - daha sık güç kullan
+        let bestScore = 15; // Çok düşük threshold - çok sık güç kullan
         
         for (const [power, score] of Object.entries(this.powerScores)) {
             // Check usage limits
-            if (this.bot.powerUsage[power] >= config.getPowerLimit(power)) {
+            const limit = config.getPowerLimit(power);
+            const used = this.bot.powerUsage[power];
+            if (used >= limit) {
+                console.log(`[StrategicLayer] ${power} limit reached: ${used}/${limit}`);
                 continue;
             }
             
             // Check if we have enough points
-            if (gs.myScore < this.powerCosts[power]) {
+            const cost = this.powerCosts[power];
+            if (gs.myScore < cost) {
+                console.log(`[StrategicLayer] ${power} too expensive: need ${cost}, have ${gs.myScore}`);
                 continue;
             }
             
@@ -111,17 +122,22 @@ export class StrategicLayer {
         }
         
         // Log power scores for debugging
-        console.log(`[StrategicLayer] Power scores: freeze=${this.powerScores.freeze.toFixed(0)}, shield=${this.powerScores.shield.toFixed(0)}, radar=${this.powerScores.radar.toFixed(0)}, safeburst=${this.powerScores.safeburst.toFixed(0)}`);
+        console.log(`[StrategicLayer] Power scores: freeze=${this.powerScores.freeze.toFixed(0)}, shield=${this.powerScores.shield.toFixed(0)}, radar=${this.powerScores.radar.toFixed(0)}, safeburst=${this.powerScores.safeburst.toFixed(0)}, myScore=${gs.myScore}`);
         
-        if (!bestPower) return null;
+        if (!bestPower) {
+            console.log(`[StrategicLayer] No power selected - threshold: ${bestScore}`);
+            return null;
+        }
         
-        // Güç priority hesaplama - duruma göre güç kullanımı önemli olabilir
-        let powerPriority = 70 + bestScore / 4;  // Base: 70-95
+        // Güç priority hesaplama
+        // Reveal priority = 88, Flag priority = 92
+        // Power score 50+ olursa reveal'dan önce gelebilmeli
+        let powerPriority = 75 + bestScore / 2;  // Base: 75 + (15-50) = 82-125
         
         // GÜVENLİ HAMLE YOKSA GÜÇ ÖNCELİĞİ ARTAR
         const hasSafeMoves = this.bot.deterministicLayer.findSafeCells().length > 0;
         if (!hasSafeMoves) {
-            powerPriority += 20; // Güç kullanmak daha mantıklı
+            powerPriority += 20; // Güç kullanmak çok mantıklı
         }
         
         // Kritik fazda güç kullanımı daha önemli
@@ -129,13 +145,15 @@ export class StrategicLayer {
             powerPriority += 15;
         } else if (gs.phase === 'late') {
             powerPriority += 10;
+        } else if (gs.phase === 'mid') {
+            powerPriority += 5;
         }
         
         // Gerideyken güç kullanmak mantıklı
-        if (gs.scoreDiff < -20) {
+        if (gs.scoreDiff < -15) {
             powerPriority += 10;
         }
-        if (gs.scoreDiff < -40) {
+        if (gs.scoreDiff < -35) {
             powerPriority += 10;
         }
         
@@ -145,12 +163,16 @@ export class StrategicLayer {
         }
         
         // Power'ın kendi score'u yüksekse priority artar
-        if (bestScore > 60) {
+        if (bestScore > 50) {
+            powerPriority += 10;
+        }
+        if (bestScore > 70) {
             powerPriority += 10;
         }
         
-        // Max 98 - reveal/flag her zaman önce (priority 100/95/90)
-        powerPriority = Math.min(98, powerPriority);
+        // Power priority: 82-130 arası (reveal=88, flag=92)
+        // Score 50+ ise genelde reveal'ı geçer
+        powerPriority = Math.min(105, powerPriority);  // Max 105 - flag'dan yüksek olabilir
         
         console.log(`[StrategicLayer] Best power: ${bestPower} (score: ${bestScore.toFixed(0)}, priority: ${powerPriority.toFixed(0)})`);
         
@@ -212,53 +234,55 @@ export class StrategicLayer {
         const powerEff = this.bot.learningSystem.getPowerEffectiveness();
         
         // Base score - oyun ilerledikçe güç kullanımı daha önemli
-        const baseScore = gs.phase === 'early' ? 10 : (gs.phase === 'mid' ? 20 : 30);
+        const baseScore = gs.phase === 'early' ? 20 : (gs.phase === 'mid' ? 30 : 40);
         
         // FREEZE: Stop opponent when they're doing well
         scores.freeze = baseScore;
-        if (oa.moveSpeed > 3) scores.freeze += 30;  // Rakip hızlı
+        if (oa.moveSpeed > 2) scores.freeze += 25;   // Rakip aktif
+        if (oa.moveSpeed > 4) scores.freeze += 25;   // Rakip hızlı
         if (oa.moveSpeed > 6) scores.freeze += 20;  // Rakip çok hızlı
-        if (gs.scoreDiff < -15) scores.freeze += 25; // Gerideyiz
-        if (gs.scoreDiff < -40) scores.freeze += 25; // Çok gerideyiz
+        if (gs.scoreDiff < -10) scores.freeze += 25; // Gerideyiz
+        if (gs.scoreDiff < -30) scores.freeze += 25; // Çok gerideyiz
         if (oa.isOnStreak) scores.freeze += 30;      // Rakip seri yapıyor
         if (gs.phase === 'critical') scores.freeze += 20;
-        if (gs.opponentScore > gs.myScore + 20) scores.freeze += 20; // Rakip önde
+        if (gs.opponentScore > gs.myScore + 15) scores.freeze += 20; // Rakip önde
         scores.freeze += (powerEff.freeze - 0.5) * 30;
         
         // RADAR: Find mines - her zaman faydalı
-        scores.radar = baseScore + 15;  // Radar her zaman biraz değerli
+        scores.radar = baseScore + 25;  // Radar her zaman değerli
         const hasSafeMoves = this.bot.deterministicLayer.findSafeCells().length > 0;
         const hasMineMoves = this.bot.deterministicLayer.findMineCells().length > 0;
         if (!hasSafeMoves && !hasMineMoves) scores.radar += 50; // Stuck - çok değerli
-        if (!hasSafeMoves) scores.radar += 30; // Güvenli hamle yok
-        if (gs.phase === 'early') scores.radar += 20; // Erken oyunda harita keşfi
-        if (gs.phase === 'mid') scores.radar += 15;
+        if (!hasSafeMoves) scores.radar += 35; // Güvenli hamle yok
+        if (gs.phase === 'early') scores.radar += 25; // Erken oyunda harita keşfi
+        if (gs.phase === 'mid') scores.radar += 20;
         // Çok fazla kapalı hücre varsa radar faydalı
         const closedCells = this.bot.visibleState.closedCells?.size || 0;
-        if (closedCells > 30) scores.radar += 15;
+        if (closedCells > 30) scores.radar += 20;
+        if (closedCells > 50) scores.radar += 15;
         scores.radar += (powerEff.radar - 0.5) * 30;
         
         // SAFEBURST: Quick points - puan almak için
-        scores.safeburst = baseScore;
-        if (gs.scoreDiff < -20) scores.safeburst += 35; // Gerideyiz
-        if (gs.scoreDiff < -50) scores.safeburst += 30; // Çok gerideyiz
-        if (gs.urgency > 40) scores.safeburst += 25;
-        if (gs.phase === 'late') scores.safeburst += 25;
+        scores.safeburst = baseScore + 10;
+        if (gs.scoreDiff < -15) scores.safeburst += 35; // Gerideyiz
+        if (gs.scoreDiff < -40) scores.safeburst += 30; // Çok gerideyiz
+        if (gs.urgency > 30) scores.safeburst += 25;
+        if (gs.phase === 'late') scores.safeburst += 30;
         if (gs.phase === 'critical') scores.safeburst += 35;
         // Hamleler tükeniyor ve gerideyiz
-        if (!hasSafeMoves && gs.scoreDiff < 0) scores.safeburst += 20;
+        if (!hasSafeMoves && gs.scoreDiff < 0) scores.safeburst += 25;
         scores.safeburst += (powerEff.safeburst - 0.5) * 30;
         
         // SHIELD: Protection - öndeyken veya risk alırken
         scores.shield = baseScore;
-        if (gs.scoreDiff > 15) scores.shield += 30;  // Öndeyiz
-        if (gs.scoreDiff > 40) scores.shield += 25;  // Çok öndeyiz
-        if (gs.phase === 'late') scores.shield += 25;
+        if (gs.scoreDiff > 10) scores.shield += 30;  // Öndeyiz
+        if (gs.scoreDiff > 30) scores.shield += 25;  // Çok öndeyiz
+        if (gs.phase === 'late') scores.shield += 30;
         if (gs.phase === 'critical') scores.shield += 35;
-        if (this.mood === 'aggressive') scores.shield += 25; // Risk alıyoruz
-        if (this.mood === 'desperate') scores.shield += 20;  // Desperate
+        if (this.mood === 'aggressive') scores.shield += 30; // Risk alıyoruz
+        if (this.mood === 'desperate') scores.shield += 25;  // Desperate
         // Probabilistic hamle yapacaksak shield iyi
-        if (!hasSafeMoves && closedCells > 10) scores.shield += 20;
+        if (!hasSafeMoves && closedCells > 10) scores.shield += 25;
         scores.shield += (powerEff.shield - 0.5) * 30;
         
         // Cap all scores at 100

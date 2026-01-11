@@ -67,12 +67,12 @@ export class BotDifficultyConfig {
                 accuracy: 0.85,
                 errorBias: 0.08,
                 
-                powerCooldown: 18000,
+                powerCooldown: 12000,  // 12 saniye (18'den düşürüldü)
                 powerLimits: {
-                    freeze: 1,
-                    shield: 1,
-                    radar: 2,
-                    safeburst: 1
+                    freeze: 2,
+                    shield: 2,
+                    radar: 3,
+                    safeburst: 2
                 },
                 
                 riskTolerance: 0.32,
@@ -92,12 +92,12 @@ export class BotDifficultyConfig {
                 accuracy: 0.90,
                 errorBias: 0.05,
                 
-                powerCooldown: 12000,
+                powerCooldown: 8000,   // 8 saniye (12'den düşürüldü)
                 powerLimits: {
-                    freeze: 2,
-                    shield: 2,
-                    radar: 2,
-                    safeburst: 2
+                    freeze: 3,
+                    shield: 3,
+                    radar: 4,
+                    safeburst: 3
                 },
                 
                 riskTolerance: 0.35,
@@ -116,12 +116,12 @@ export class BotDifficultyConfig {
                 accuracy: 0.95,        // %95 doğru karar
                 errorBias: 0.02,       // Küçük hata payı
                 
-                powerCooldown: 8000,   // 8 saniye
+                powerCooldown: 5000,   // 5 saniye - sık güç kullanımı
                 powerLimits: {
-                    freeze: 2,
-                    shield: 2,
-                    radar: 3,
-                    safeburst: 2
+                    freeze: 4,
+                    shield: 4,
+                    radar: 5,
+                    safeburst: 4
                 },
                 
                 riskTolerance: 0.40,   // Makul risk
