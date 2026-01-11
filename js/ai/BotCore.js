@@ -364,7 +364,16 @@ export class BotCore {
                     layer: 'deterministic'
                 });
             }
-            // Güvenli hücre varsa diğer şeylere bakma, direkt aç
+            
+            // Güvenli hücre varken de güç kullanımını değerlendir (ama düşük öncelikle)
+            // Örneğin önde olunca freeze atmak mantıklı olabilir
+            const powerActionEarly = this.strategicLayer.evaluatePowerUsage();
+            if (powerActionEarly && powerActionEarly.priority > 85) {
+                // Sadece çok yüksek öncelikli güçleri düşün
+                powerActionEarly.priority = Math.min(powerActionEarly.priority, 95); // Reveal'den düşük tut
+                candidates.push(powerActionEarly);
+            }
+            
             candidates.sort((a, b) => b.priority - a.priority);
             return this.selectActionByDifficulty(candidates);
         }
