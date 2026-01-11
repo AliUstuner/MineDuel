@@ -339,7 +339,36 @@ export class BotCore {
         
         console.log(`[BotCore] Deterministic found: ${safeCells.length} safe, ${mineCells.length} mines`);
         
-        // Add safe moves (highest priority - OYUN KAZANMAK İÇİN)
+        // ÖNCE kesin mayınları bayrakla (en yüksek öncelik)
+        // Böylece yanlışlıkla mayına basma riski azalır
+        for (const cell of mineCells) {
+            if (!this.visibleState.flaggedCells.has(`${cell.x},${cell.y}`)) {
+                candidates.push({
+                    type: 'flag',
+                    x: cell.x,
+                    y: cell.y,
+                    priority: 105,  // En yüksek - önce bayrakla
+                    reason: 'Deterministic: Confirmed mine - FLAG FIRST!',
+                    layer: 'deterministic'
+                });
+            }
+        }
+        
+        // Radar mayınlarını bayrakla (daha da yüksek öncelik)
+        for (const pos of this.visibleState.pendingRadarFlags) {
+            if (!this.visibleState.flaggedCells.has(`${pos.x},${pos.y}`)) {
+                candidates.push({
+                    type: 'flag',
+                    x: pos.x,
+                    y: pos.y,
+                    priority: 106,  // Radar mayınları en yüksek
+                    reason: 'Radar: Revealed mine - FLAG IMMEDIATELY!',
+                    layer: 'deterministic'
+                });
+            }
+        }
+        
+        // SONRA güvenli hücreleri aç (ikinci öncelik)
         for (const cell of safeCells) {
             candidates.push({
                 type: 'reveal',
@@ -349,34 +378,6 @@ export class BotCore {
                 reason: 'Deterministic: Guaranteed safe',
                 layer: 'deterministic'
             });
-        }
-        
-        // Add flag moves for confirmed mines (lower priority than reveal)
-        for (const cell of mineCells) {
-            if (!this.visibleState.flaggedCells.has(`${cell.x},${cell.y}`)) {
-                candidates.push({
-                    type: 'flag',
-                    x: cell.x,
-                    y: cell.y,
-                    priority: 90,  // Reveal'dan düşük, ama yine de yüksek
-                    reason: 'Deterministic: Confirmed mine',
-                    layer: 'deterministic'
-                });
-            }
-        }
-        
-        // Add radar mine flags (highest flag priority)
-        for (const pos of this.visibleState.pendingRadarFlags) {
-            if (!this.visibleState.flaggedCells.has(`${pos.x},${pos.y}`)) {
-                candidates.push({
-                    type: 'flag',
-                    x: pos.x,
-                    y: pos.y,
-                    priority: 95,  // Radar mayınları biraz daha yüksek
-                    reason: 'Radar: Revealed mine',
-                    layer: 'deterministic'
-                });
-            }
         }
         
         // LAYER 2: Probabilistic (when no deterministic moves)

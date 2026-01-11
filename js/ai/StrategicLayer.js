@@ -112,12 +112,28 @@ export class StrategicLayer {
         
         if (!bestPower) return null;
         
-        // Power priority düşük olmalı - sadece başka seçenek yokken kullan
-        // Reveal (100) ve Flag (90-95) her zaman önce gelmeli
+        // Güç priority'si duruma göre değişir
+        // - Güvenli hamle yoksa daha yüksek priority
+        // - Kritik durumda daha yüksek priority
+        let powerPriority = 75 + bestScore / 5;  // Base: 75-95
+        
+        // Kritik fazda güç kullanımı daha önemli
+        if (gs.phase === 'critical' || gs.phase === 'late') {
+            powerPriority += 10;
+        }
+        
+        // Gerideyken güç kullanmak mantıklı
+        if (gs.scoreDiff < -30) {
+            powerPriority += 15;
+        }
+        
+        // Ama reveal/flag'den düşük kalmalı (max 99)
+        powerPriority = Math.min(99, powerPriority);
+        
         return {
             type: 'power',
             power: bestPower,
-            priority: 50 + bestScore / 10,  // Max 60, reveal/flag'den düşük
+            priority: powerPriority,
             reason: `Strategic: ${bestPower} (score: ${bestScore.toFixed(0)})`,
             layer: 'strategic'
         };
