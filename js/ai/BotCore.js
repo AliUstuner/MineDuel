@@ -609,6 +609,7 @@ export class BotCore {
     
     /**
      * Try to use a smart power (called every think cycle)
+     * FELSEFE: "En çok puanı alan kazanır - güçleri tasarruflu kullan!"
      * Returns true if power was used
      */
     tryRandomPowerUsage() {
@@ -616,17 +617,11 @@ export class BotCore {
         
         // Cooldown kontrolü - son güç kullanımından beri geçen süre
         const timeSinceLastPower = Date.now() - this.powerUsage.lastUseTime;
-        const cooldown = this.config.getPowerCooldown();
         
-        // Oyun başında 8 saniye bekle, sonra normal cooldown (artırıldı)
-        const effectiveCooldown = this.powerUsage.lastUseTime === 0 ? 8000 : Math.max(cooldown, 10000);
+        // Uzun cooldown - güçler arası en az 15 saniye
+        const effectiveCooldown = this.powerUsage.lastUseTime === 0 ? 15000 : 15000;
         
         if (timeSinceLastPower < effectiveCooldown) {
-            return false;
-        }
-        
-        // %12 şansla güç kullanmayı dene (azaltıldı)
-        if (Math.random() > 0.12) {
             return false;
         }
         
@@ -635,34 +630,84 @@ export class BotCore {
         const opponentScore = this.game?.score || 0;
         const scoreDiff = myScore - opponentScore;
         
-        // Minimum puan eşiği - çok düşük puanla güç kullanma
-        // En ucuz güç 30 puan, en az 80 puan olmalı (güç kullandıktan sonra 20-50 puan kalsın)
-        if (myScore < 80) {
-            return false;
-        }
-        
-        // Toplam güç kullanım limiti - maç başına max 4-5 güç
+        // Toplam güç kullanım limiti - maç başına max 2-3 güç
         const totalPowerUsed = (this.powerUsage.freeze || 0) + 
                                (this.powerUsage.shield || 0) + 
                                (this.powerUsage.radar || 0) + 
                                (this.powerUsage.safeburst || 0);
-        if (totalPowerUsed >= 5) {
+        if (totalPowerUsed >= 3) {
+            return false;
+        }
+        
+        // AKILLI KARAR: Sadece gerçekten gerektiğinde güç kullan
+        // Puan kaybetmek istemiyoruz - güç kullanmak puan kaybettirir!
+        
+        // Durum 1: Çok gerideyiz ve kritik/late faz - FREEZE veya SAFEBURST mantıklı
+        const isBehind = scoreDiff < -30;
+        const isCriticalPhase = this.gameState.phase === 'critical' || this.gameState.phase === 'late';
+        
+        // Durum 2: Çok öndeyiz ve oyun sonuna yaklaşıyor - SHIELD mantıklı
+        const isAhead = scoreDiff > 50;
+        
+        // Durum 3: Güvenli hamle yok ve sıkıştık - RADAR mantıklı
+        const safeCells = this.deterministicLayer.findSafeCells();
+        const isStuck = safeCells.length === 0;
+        
+        // Sadece bu durumlardan biri varsa güç kullanmayı düşün
+        const shouldConsiderPower = (isBehind && isCriticalPhase) || 
+                                    (isAhead && isCriticalPhase) || 
+                                    (isStuck && this.gameState.phase !== 'early');
+        
+        if (!shouldConsiderPower) {
+            return false;
+        }
+        
+        // Bu durumda bile sadece %30 şansla güç kullan
+        if (Math.random() > 0.30) {
+            return false;
+        }
+        
+        // Minimum puan eşiği - güç kullandıktan sonra yeterli puan kalmalı
+        const minScoreForPower = 100; // En az 100 puan olmalı
+        if (myScore < minScoreForPower) {
             return false;
         }
         
         // Son kullanılan gücü takip et - aynı gücü üst üste kullanma
         const lastPower = this.powerUsage.lastPowerUsed || null;
         
-        // Duruma göre güç seç
-        const selectedPower = this.selectSmartPower(myScore, scoreDiff, lastPower, costs);
+        // Duruma göre en mantıklı gücü seç
+        let selectedPower = null;
+        
+        if (isBehind && isCriticalPhase) {
+            // Gerideyiz - rakibi durdur veya hızlı puan al
+            if (scoreDiff < -50) {
+                selectedPower = lastPower !== 'safeburst' ? 'safeburst' : 'freeze';
+            } else {
+                selectedPower = lastPower !== 'freeze' ? 'freeze' : 'safeburst';
+            }
+        } else if (isAhead && isCriticalPhase) {
+            // Öndeyiz - kendimizi koru
+            selectedPower = 'shield';
+        } else if (isStuck) {
+            // Sıkıştık - mayın bul
+            selectedPower = 'radar';
+        }
         
         if (!selectedPower) {
             return false;
         }
         
+        // Seçilen gücü kullanabilir miyiz kontrol et
         const cost = costs[selectedPower];
+        const limit = this.config.getPowerLimit(selectedPower);
+        const used = this.powerUsage[selectedPower] || 0;
         
-        console.log(`[BotCore] 🎯 SMART POWER: ${selectedPower} (cost: ${cost}, score: ${myScore}, diff: ${scoreDiff}, total: ${totalPowerUsed + 1}/5)`);
+        if (myScore < cost || used >= limit) {
+            return false;
+        }
+        
+        console.log(`[BotCore] 🎯 STRATEGIC POWER: ${selectedPower} (cost: ${cost}, score: ${myScore}, diff: ${scoreDiff}, reason: ${isBehind ? 'behind' : isAhead ? 'ahead' : 'stuck'})`);
         
         // Gücü kullan
         const result = this.game?.useBotPower?.(selectedPower, cost);
