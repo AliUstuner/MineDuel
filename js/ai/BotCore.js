@@ -337,27 +337,16 @@ export class BotCore {
         const safeCells = this.deterministicLayer.findSafeCells();
         const mineCells = this.deterministicLayer.findMineCells();
         
-        // Add safe moves (highest priority)
-        for (const cell of safeCells) {
-            candidates.push({
-                type: 'reveal',
-                x: cell.x,
-                y: cell.y,
-                priority: 100,
-                reason: 'Deterministic: Guaranteed safe',
-                layer: 'deterministic'
-            });
-        }
-        
-        // Add flag moves for confirmed mines
+        // ÖNCE kesin mayınları bayrakla (yüksek öncelik)
+        // Bu sayede yanlışlıkla mayına basma riski azalır
         for (const cell of mineCells) {
             if (!this.visibleState.flaggedCells.has(`${cell.x},${cell.y}`)) {
                 candidates.push({
                     type: 'flag',
                     x: cell.x,
                     y: cell.y,
-                    priority: 95,
-                    reason: 'Deterministic: Confirmed mine',
+                    priority: 102,  // En yüksek öncelik - kesin mayınları hemen bayrakla
+                    reason: 'Deterministic: Confirmed mine - FLAG IT!',
                     layer: 'deterministic'
                 });
             }
@@ -365,12 +354,26 @@ export class BotCore {
         
         // Add radar mine flags (highest flag priority)
         for (const pos of this.visibleState.pendingRadarFlags) {
+            if (!this.visibleState.flaggedCells.has(`${pos.x},${pos.y}`)) {
+                candidates.push({
+                    type: 'flag',
+                    x: pos.x,
+                    y: pos.y,
+                    priority: 103,  // Radar mayınları en yüksek öncelik
+                    reason: 'Radar: Revealed mine - FLAG IT!',
+                    layer: 'deterministic'
+                });
+            }
+        }
+        
+        // Add safe moves (high priority but after flagging mines)
+        for (const cell of safeCells) {
             candidates.push({
-                type: 'flag',
-                x: pos.x,
-                y: pos.y,
-                priority: 98,
-                reason: 'Radar: Revealed mine',
+                type: 'reveal',
+                x: cell.x,
+                y: cell.y,
+                priority: 100,
+                reason: 'Deterministic: Guaranteed safe',
                 layer: 'deterministic'
             });
         }
