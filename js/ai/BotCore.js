@@ -713,15 +713,10 @@ export class BotCore {
             return false;
         }
         
-        // Seçilen gücü kullanabilir miyiz kontrol et - OYUNUN GERÇEK DEĞERLERİNİ KULLAN
+        // Seçilen gücü kullanabilir miyiz kontrol et
         const cost = costs[selectedPower];
         
-        // Oyundaki gerçek güç haklarını kontrol et
-        const gameUsesLeft = this.game?.botPowerUsesLeft;
-        if (gameUsesLeft && gameUsesLeft[selectedPower] <= 0) {
-            console.log(`[BotCore] Power ${selectedPower} has no uses left in game`);
-            return false;
-        }
+        // Zaten yukarıda gameUsesLeft kontrol ettik, tekrar kontrol etmeye gerek yok
         
         if (myScore < cost) {
             return false;
